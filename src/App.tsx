@@ -669,13 +669,12 @@ function TeamAvatar({ index, level, name, ...props }: { index: number, level: nu
 function HeroPortrait({ level, heroId }: { level: number; heroId: number }) {
     return (
         <div className="relative w-full max-w-[130px] lg:max-w-none lg:w-52 h-[180px] lg:h-[340px] group origin-bottom mx-auto">
-            <Canvas shadows camera={{ position: [0, 1.5, 5.5], fov: 50 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, alpha: true }}>
-                <ambientLight intensity={0.2} />
-                <directionalLight position={[5, 5, 5]} intensity={1.5} color="#ef4444" castShadow shadow-mapSize={[1024, 1024]} />
-                <directionalLight position={[-5, 5, -5]} intensity={0.8} color="#3b82f6" />
+            <Canvas camera={{ position: [0, 1.5, 5.5], fov: 50 }} gl={{ antialias: true, alpha: true }}>
+                <ambientLight intensity={0.6} />
+                <pointLight position={[5, 5, 5]} intensity={20} color="#ef4444" />
+                <pointLight position={[-5, 5, -5]} intensity={15} color="#3b82f6" />
                 <HeroModel id={heroId} />
-                <DreiSparkles count={50} scale={4} size={2} speed={0.4} color="#ef4444" opacity={0.8} />
-                <Environment preset="night" />
+                <DreiSparkles count={40} scale={4} size={2} speed={0.4} color="#ef4444" opacity={0.8} />
             </Canvas>
             
             <div className="absolute bottom-2 left-0 w-full flex flex-col items-center z-30 pointer-events-none">
@@ -692,13 +691,12 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
             {isBoss && (
                 <div className="absolute inset-0 bg-red-500/20 blur-[50px] rounded-full pointer-events-none animate-pulse"></div>
             )}
-            <Canvas shadows camera={{ position: [0, 0, 7], fov: 50 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, alpha: true }}>
-                <ambientLight intensity={0.2} />
-                <pointLight position={[0, 0, 0]} intensity={3} color={isBoss ? "#ef4444" : "#a855f7"} />
-                <directionalLight position={[5, 5, 5]} intensity={1} castShadow shadow-mapSize={[1024, 1024]} />
+            <Canvas camera={{ position: [0, 0, 7], fov: 50 }} gl={{ antialias: true, alpha: true }}>
+                <ambientLight intensity={0.5} />
+                <pointLight position={[0, 0, 0]} intensity={20} color={isBoss ? "#ef4444" : "#a855f7"} />
+                <pointLight position={[5, 5, 5]} intensity={15} />
                 <MonsterModel isBoss={isBoss} kills={kills} />
-                <DreiSparkles count={isBoss ? 100 : 50} scale={5} size={isBoss ? 4 : 2} speed={0.6} color={isBoss ? "#f59e0b" : "#ef4444"} opacity={0.8} />
-                <Environment preset="night" />
+                <DreiSparkles count={isBoss ? 80 : 40} scale={5} size={isBoss ? 4 : 2} speed={0.6} color={isBoss ? "#f59e0b" : "#ef4444"} opacity={0.8} />
             </Canvas>
         </div>
     );
@@ -1621,27 +1619,26 @@ export default function App() {
                 </div>
             </aside>
 
-            <main className="flex-1 flex flex-col relative z-10 p-2 lg:px-4 lg:pb-4 overflow-y-auto lg:overflow-hidden overflow-x-hidden">
-                <div className="aaa-glass lg:mt-4 mt-1 flex flex-wrap lg:flex-nowrap items-center justify-between p-2 lg:px-8 z-10 border-red-500/60 shadow-[0_4px_20px_rgba(239,68,68,0.2)] gap-2 lg:gap-0">
-                    <div className="flex items-center justify-center lg:justify-start gap-4 lg:gap-10 w-full lg:w-auto order-2 lg:order-1">
+            <main className="flex-1 flex flex-col relative z-10 p-1 lg:p-4 overflow-hidden">
+                <div className="aaa-glass lg:mt-4 mt-1 flex flex-col lg:flex-row items-center justify-between p-2 lg:px-8 z-10 border-red-500/60 shadow-[0_4px_20px_rgba(239,68,68,0.2)] gap-2">
+                    <div className="flex items-center justify-center lg:justify-start gap-3 lg:gap-10 w-full lg:w-auto order-2 lg:order-1">
                         <div className="flex flex-col text-center lg:text-left">
-                            <span className="text-[8px] lg:text-[10px] text-red-500 font-black anime-header">Total DPS</span>
-                            <div className="text-xl lg:text-3xl font-display text-white tracking-widest">{format(getStaticDps(gameState))}</div>
+                            <span className="text-[8px] lg:text-[10px] text-zinc-500 font-black anime-header uppercase">Total DPS</span>
+                            <div className="text-sm lg:text-3xl font-display text-white tracking-widest">{format(getStaticDps(gameState))}</div>
                         </div>
                         <div className="flex flex-col text-center lg:text-left">
-                            <span className="text-[8px] lg:text-[10px] text-yellow-500 font-black anime-header">Gold</span>
-                            <div className="text-xl lg:text-3xl font-display text-yellow-500 flex items-center gap-1 justify-center lg:justify-start">{format(gameState.gold)} <Coins size={16} className="hidden lg:block"/></div>
+                            <span className="text-[8px] lg:text-[10px] text-yellow-500 font-black anime-header uppercase">Gold</span>
+                            <div className="text-sm lg:text-3xl font-display text-yellow-500 flex items-center gap-1 justify-center lg:justify-start">{format(gameState.gold)} <Coins size={14} className="lg:w-4 lg:h-4"/></div>
                         </div>
                     </div>
                     
                     <div className="text-center w-full lg:w-auto order-1 lg:order-2 lg:absolute lg:left-1/2 lg:-translate-x-1/2 flex flex-col items-center justify-center">
-                        <div className="text-[8px] lg:text-[10px] text-red-500 font-black anime-header hidden lg:block">Current Objective</div>
-                        <div className="bg-red-600 px-4 lg:px-6 py-1 text-white font-display text-xl lg:text-2xl skew-x-[-15deg] shadow-[4px_4px_0px_#7f1d1d]">
+                        <div className="bg-red-600 px-4 lg:px-6 py-1 text-white font-display text-base lg:text-2xl skew-x-[-15deg] shadow-[4px_4px_0px_#7f1d1d]">
                             STAGE {Math.floor(gameState.totalKills/5)+1}-{gameState.subStage}
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-center lg:justify-end gap-4 lg:gap-6 w-full lg:w-auto order-3 mt-1 lg:mt-0">
+                    <div className="flex items-center justify-center lg:justify-end gap-3 lg:gap-6 w-full lg:w-auto order-3 mt-1 lg:mt-0 py-1 lg:py-0 border-t lg:border-none border-white/5">
                         <div className="flex flex-col items-center lg:items-end text-orange-400 group relative cursor-help">
                             <span className="text-[8px] lg:text-[10px] font-black anime-header">Glory</span>
                             <div className="text-lg lg:text-2xl font-display flex items-center gap-1 lg:gap-2">{format(gameState.glory)} <Trophy size={14} className="lg:w-4 lg:h-4"/></div>
