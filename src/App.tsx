@@ -779,11 +779,13 @@ export default function App() {
     const [userRank, setUserRank] = useState<number | null>(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
+    const [authError, setAuthError] = useState<string | null>(null);
     
     const popupIdRef = useRef(0);
     const activeDpsBufRef = useRef(0);
     const gameStateRef = useRef(gameState);
     const lastSyncTimeRef = useRef(0);
+    const lastSyncedStageRef = useRef(0);
 
     useEffect(() => {
         // --- Telegram Mini App Initialization ---
@@ -866,19 +868,28 @@ export default function App() {
         window.addEventListener('keydown', handleKeyDown);
 
         // --- Firebase Auth & Leaderboard ---
-        signInAnonymously(auth).catch(err => {
-            if (err.code === 'auth/admin-restricted-operation') {
-                console.warn("Leaderboard: Anonymous auth is not enabled in Firebase Console. Please enable it in 'Authentication -> Sign-in method'.");
-            } else {
+        const initAuth = async () => {
+            try {
+                await signInAnonymously(auth);
+            } catch (err: any) {
+                if (err.code === 'auth/admin-restricted-operation') {
+                    setAuthError("Anonymous auth is disabled in Firebase Console. Leaderboard won't work.");
+                } else {
+                    setAuthError("Auth error: " + err.message);
+                }
                 console.error("Auth fail", err);
             }
-        });
+        };
+        initAuth();
 
         const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
             setIsAuthReady(true);
+            if (user) {
+                setAuthError(null);
+            }
         });
 
-        const q = query(collection(db, 'leaderboard'), orderBy('stage', 'desc'), limit(10));
+        const q = query(collection(db, 'leaderboard'), orderBy('stage', 'desc'), limit(15));
         const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => doc.data());
             setLeaderboard(data);
@@ -908,8 +919,17 @@ export default function App() {
         const stage = Math.floor(gameState.totalKills / 5) + 1;
         const now = Date.now();
 
-        // Sync every 30 seconds or if stage increases
-        if (now - lastSyncTimeRef.current > 30000 || stage > (INITIAL_STATE.totalKills / 5) + 1) {
+        // Sync if:
+        // 1. First time sync (lastSyncTimeRef === 0)
+        // 2. Stage increased
+        // 3. 60 seconds passed
+        
+        const shouldSync = 
+            lastSyncTimeRef.current === 0 || 
+            stage > lastSyncedStageRef.current || 
+            (now - lastSyncTimeRef.current > 60000);
+
+        if (shouldSync) {
             const uid = auth.currentUser.uid;
             const entry = {
                 uid,
@@ -922,10 +942,13 @@ export default function App() {
             };
 
             setDoc(doc(db, 'leaderboard', uid), entry, { merge: true })
+                .then(() => {
+                    lastSyncTimeRef.current = now;
+                    lastSyncedStageRef.current = stage;
+                })
                 .catch(err => handleFirestoreError(err, 'WRITE', 'leaderboard/' + uid));
-            lastSyncTimeRef.current = now;
         }
-    }, [gameState.totalKills, isAuthReady, playerName]);
+    }, [gameState.totalKills, isAuthReady, playerName, gameState.subStage]);
 
     const saveState = (state: GameState) => {
         try {
@@ -1484,9 +1507,14 @@ export default function App() {
                         ))}
                     </div>
                 );
-            case 'leaderboard':
+                case 'leaderboard':
                 return (
                     <div className="flex flex-col gap-3">
+                        {authError && (
+                            <div className="bg-red-900/40 border border-red-500 p-2 rounded-xl text-[10px] text-red-200 text-center font-bold animate-pulse">
+                                ⚠️ {authError}
+                            </div>
+                        )}
                         <div className="aaa-glass p-4 rounded-3xl flex flex-col gap-4 relative overflow-hidden">
                             <div className="font-extrabold text-lg text-red-500 uppercase tracking-wide z-10 text-center flex items-center justify-center gap-2">
                                 <Trophy size={20} />
