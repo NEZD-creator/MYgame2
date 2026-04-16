@@ -117,7 +117,8 @@ const HEROES_DATA = [
 
 function getClickDmg(state: GameState) {
     let dmg = (15 + state.player.gear.sword * 25) * (1 + state.player.lvl * 0.25);
-    dmg *= (1 + state.glory * 0.1);
+    // Prestige bonus increased to 25% per Glory for more 'pleasant' progression
+    dmg *= (1 + state.glory * 0.25);
     
     if (state.mainHero.id === 2) dmg *= 1.5;
     
@@ -141,7 +142,8 @@ function getStaticDps(state: GameState) {
     let dps = 0;
     state.mercs.forEach(m => dps += m.atk * m.level);
     dps *= (1 + state.player.gear.ring * 0.2); // Ring boosts DPS
-    dps *= (1 + state.glory * 0.1);
+    // Prestige bonus increased to 25% per Glory
+    dps *= (1 + state.glory * 0.25);
     if(state.arts[3].owned) dps *= 2;
     if (state.mainHero.id === 3) dps *= 2;
     
@@ -152,7 +154,8 @@ function getStaticDps(state: GameState) {
 function spawnMonster(state: GameState): GameState {
     const stage = Math.floor(state.totalKills / 5) + 1;
     const isBoss = (state.subStage === 5);
-    let maxHp = isBoss ? Math.floor(500 * Math.pow(1.25, stage)) : Math.floor(100 * Math.pow(1.25, stage));
+    // Base HP follows 1.45 growth which is more pleasant for idle games
+    let maxHp = Math.floor((isBoss ? 400 : 80) * Math.pow(1.45, stage));
     let bTime = 30;
     if (state.arts[2].owned) bTime += 5;
     
@@ -180,14 +183,16 @@ function applyDamage(state: GameState, amt: number, isClick: boolean): GameState
     
     if (newState.enemy.hp <= 0) {
         const stage = Math.floor(newState.totalKills / 5) + 1;
-        let rew = Math.floor((newState.isBoss ? 200 : 20) * Math.pow(1.22, stage));
+        // Gold reward is tied to enemy HP/12 to keep it proportional
+        let rew = Math.floor(newState.enemy.max / 12);
         if(newState.arts[0].owned) rew *= 2;
         newState.gold += rew;
         
         newState.totalKills++;
         if(newState.isBoss) {
             newState.subStage = 1;
-            newState.crystals += 5;
+            newState.crystals += 3; // Reduced boss crystal grant to balance Gacha
+            newState.souls += Math.floor(stage * 1.5); // Grant souls on boss kill
         } else {
             newState.subStage++;
         }
@@ -197,6 +202,8 @@ function applyDamage(state: GameState, amt: number, isClick: boolean): GameState
 }
 
 function format(n: number) {
+    if (n >= 1e15) return (n/1e15).toFixed(2) + 'Q';
+    if (n >= 1e12) return (n/1e12).toFixed(2) + 'T';
     if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
     if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
     if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
@@ -703,12 +710,12 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
 }
 
 const GACHA_PRIZES = [
-    { type: 'gold', amount: 5000000, text: "5M Золота", color: "#3b82f6", weight: 40 },
-    { type: 'souls', amount: 5000, text: "5K Душ", color: "#f59e0b", weight: 30 },
-    { type: 'crystals', amount: 150, text: "150 Кристаллов", color: "#a855f7", weight: 15 },
-    { type: 'gold', amount: 100000000, text: "100M Золота", color: "#1e40af", weight: 10 },
-    { type: 'souls', amount: 50000, text: "50K Душ", color: "#7c2d12", weight: 4 },
-    { type: 'crystals', amount: 1000, text: "1K Кристаллов", color: "#db2777", weight: 1 },
+    { type: 'gold_relative', multiplier: 25, text: "Мешок Золота", color: "#3b82f6", weight: 40 },
+    { type: 'souls_relative', multiplier: 5, text: "Сгусток Душ", color: "#f59e0b", weight: 30 },
+    { type: 'crystals', amount: 300, text: "300 Кристаллов", color: "#a855f7", weight: 15 },
+    { type: 'gold_relative', multiplier: 500, text: "Гора Золота", color: "#1e40af", weight: 10 },
+    { type: 'souls_relative', multiplier: 50, text: "Дар Предков", color: "#7c2d12", weight: 4 },
+    { type: 'crystals', amount: 5000, text: "Джекпот Книжника", color: "#db2777", weight: 1 },
 ];
 
 export default function App() {
@@ -890,10 +897,13 @@ export default function App() {
         const q = query(collection(db, 'leaderboard'), orderBy('stage', 'desc'), limit(15));
         const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs
-                .map(doc => doc.data())
+                .map(doc => ({ ...doc.data(), id: doc.id }))
                 .filter((u: any) => {
                     const name = (u.username || '').toLowerCase();
-                    return !name.includes('gemini') && !name.includes('ais agent') && !name.includes('ais_agent');
+                    // More aggressive filtering for AI/Test entries
+                    const isAI = name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
+                    const isTestAnon = name === 'аноним' && u.stage > 50; 
+                    return !isAI && !isTestAnon;
                 });
             setLeaderboard(data);
             setIsLoadingLeaderboard(false);
@@ -1074,7 +1084,8 @@ export default function App() {
             const m = prev.mercs[id];
             if (m.level >= m.maxLevel) return prev;
             
-            const cost = Math.floor(m.cost * Math.pow(1.5, m.level));
+            // Economy rework: Merceraries cost multiplier adjusted to 1.15
+            const cost = Math.floor(m.cost * Math.pow(1.15, m.level));
             if (prev.gold >= cost) {
                 const newMercs = [...prev.mercs];
                 newMercs[id] = { ...m, level: m.level + 1 };
@@ -1099,7 +1110,8 @@ export default function App() {
         setGameState(prev => {
             if (prev.player.gear[g] >= 100) return prev;
             const baseCost = g === 'sword' ? 150 : g === 'armor' ? 600 : 1500;
-            const multiplier = g === 'sword' ? 1.8 : g === 'armor' ? 1.9 : 2.0;
+            // Slightly reduced multipliers for more frequent upgrades (1.6, 1.7, 1.8 instead of 1.8, 1.9, 2.0)
+            const multiplier = g === 'sword' ? 1.6 : g === 'armor' ? 1.7 : 1.8;
             const cost = Math.floor(baseCost * Math.pow(multiplier, prev.player.gear[g]));
             if (prev.gold >= cost) {
                 return { 
@@ -1175,8 +1187,8 @@ export default function App() {
     };
 
     const rollGacha = () => {
-        if (gameState.crystals < 50) {
-            setGachaModal(prev => ({ ...prev, show: true, error: "Недостаточно кристаллов!" }));
+        if (gameState.crystals < 100) {
+            setGachaModal(prev => ({ ...prev, show: true, error: "Нужно 100 кристаллов!" }));
             setTimeout(() => setGachaModal(prev => ({ ...prev, error: null })), 2000);
             return;
         }
@@ -1198,20 +1210,30 @@ export default function App() {
         const segmentAngle = 360 / GACHA_PRIZES.length;
         const targetRotation = gachaModal.rotation + (extraSpins * 360) + (360 - (prizeIndex * segmentAngle + segmentAngle / 2) - (gachaModal.rotation % 360));
 
-        setGameState(prev => ({ ...prev, crystals: prev.crystals - 50 }));
+        setGameState(prev => ({ ...prev, crystals: prev.crystals - 100 }));
         setGachaModal(prev => ({ ...prev, show: true, spinning: true, prize: null, rotation: targetRotation, error: null }));
         
         setTimeout(() => {
-            setGachaModal(prev => ({ ...prev, spinning: false, prize: GACHA_PRIZES[prizeIndex] }));
+            const prize = GACHA_PRIZES[prizeIndex];
+            setGachaModal(prev => ({ ...prev, spinning: false, prize }));
         }, 3000);
     };
 
     const acceptGacha = () => {
         setGameState(prev => {
             let next = { ...prev };
-            if (gachaModal.prize.type === 'souls') next.souls += gachaModal.prize.amount;
-            if (gachaModal.prize.type === 'crystals') next.crystals += gachaModal.prize.amount;
-            if (gachaModal.prize.type === 'gold') next.gold += gachaModal.prize.amount;
+            const prize = gachaModal.prize;
+            const stage = Math.floor(prev.totalKills / 5) + 1;
+            const stageGold = Math.floor(80 * Math.pow(1.45, stage)) / 12;
+
+            if (prize.type === 'souls') next.souls += prize.amount;
+            if (prize.type === 'crystals') next.crystals += prize.amount;
+            if (prize.type === 'gold') next.gold += prize.amount;
+            
+            // Dynamic rewards based on stage
+            if (prize.type === 'gold_relative') next.gold += Math.floor(stageGold * prize.multiplier);
+            if (prize.type === 'souls_relative') next.souls += Math.floor(stage * 2 * prize.multiplier);
+            
             return next;
         });
         setGachaModal({ show: false, spinning: false, prize: null, rotation: 0 });
@@ -1884,9 +1906,15 @@ export default function App() {
                                                     const prize = gachaModal.prize;
                                                     setGameState(prev => {
                                                         let next = { ...prev };
+                                                        const stage = Math.floor(prev.totalKills / 5) + 1;
+                                                        const stageGold = Math.floor(80 * Math.pow(1.45, stage)) / 12;
+
                                                         if (prize.type === 'souls') next.souls += prize.amount;
                                                         if (prize.type === 'crystals') next.crystals += prize.amount;
                                                         if (prize.type === 'gold') next.gold += prize.amount;
+                                                        if (prize.type === 'gold_relative') next.gold += Math.floor(stageGold * prize.multiplier);
+                                                        if (prize.type === 'souls_relative') next.souls += Math.floor(stage * 2 * prize.multiplier);
+
                                                         return next;
                                                     });
                                                     rollGacha();
