@@ -31,7 +31,7 @@ declare global {
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star } from 'lucide-react';
+import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Float, ContactShadows, Sparkles as DreiSparkles, Outlines } from '@react-three/drei';
 import * as THREE from 'three';
@@ -815,6 +815,11 @@ export default function App() {
                 
                 const parsed = JSON.parse(rawData); 
                 
+                if (parsed.username) {
+                    // We can't call setPlayerName here because it's a state initializer
+                    // But we can rely on a useEffect to sync it once the component mounts
+                }
+                
                 // Anti-Cheat: Validate values
                 if (parsed.gold < 0 || isNaN(parsed.gold)) parsed.gold = 0;
                 if (parsed.souls < 0 || isNaN(parsed.souls)) parsed.souls = 0;
@@ -865,6 +870,8 @@ export default function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [newName, setNewName] = useState('');
     
     const popupIdRef = useRef(0);
     const activeDpsBufRef = useRef(0);
@@ -912,6 +919,7 @@ export default function App() {
                                     const rawData = decodeURIComponent(atob(value));
                                     const parsed = JSON.parse(rawData);
                                     setGameState(prev => ({ ...prev, ...parsed }));
+                                    if (parsed.username) setPlayerName(parsed.username);
                                 } catch (e) { console.error("Cloud load fail", e); }
                             }
                         });
@@ -1055,7 +1063,7 @@ export default function App() {
 
     const saveState = (state: GameState) => {
         try {
-            const json = JSON.stringify(state);
+            const json = JSON.stringify({ ...state, username: playerName });
             // Simple obfuscation to prevent casual localstorage editing
             const obfuscated = btoa(encodeURIComponent(json));
             localStorage.setItem('animeSoul_save', obfuscated);
@@ -1075,9 +1083,20 @@ export default function App() {
     };
 
     useEffect(() => {
+        const saved = localStorage.getItem('animeSoul_save');
+        if (saved) {
+            try {
+                const rawData = decodeURIComponent(atob(saved));
+                const parsed = JSON.parse(rawData);
+                if (parsed.username) setPlayerName(parsed.username);
+            } catch (e) {}
+        }
+    }, []);
+
+    useEffect(() => {
         gameStateRef.current = gameState;
         saveState(gameState);
-    }, [gameState]);
+    }, [gameState, playerName]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -1275,25 +1294,16 @@ export default function App() {
 
     const handlePayment = (item: any) => {
         const tg = (window as any).Telegram?.WebApp;
-        if (!tg) return alert("Доступно только в Telegram!");
+        if (!tg) return;
 
-        // Telegram Stars Invoice URL construction (Mock)
-        // In real app, you would fetch this from your backend
-        const invoiceUrl = `https://t.me/stars_payment_mock?item=${item.id}&amount=${item.stars}`;
-        
-        // Show Telegram Payment Popup
         try {
-            if (tg.isVersionAtLeast('6.1')) {
-                // Mock success for preview, in production use Telegram Payment APIs
-                tg.showConfirm(`Купить "${item.name}" за ${item.stars} ⭐?`, (ok: boolean) => {
-                    if (ok) {
-                        item.action(setGameState);
-                        tg.showAlert("Покупка успешно завершена!");
-                    }
-                });
-            } else {
-                tg.openTelegramLink(invoiceUrl);
-            }
+            // Note: Real stars require a backend to call createInvoiceLink
+            tg.showConfirm(`Это демо-режим. Начислить "${item.name}" за ${item.stars} ⭐ (эмуляция покупки)?`, (ok: boolean) => {
+                if (ok) {
+                    item.action(setGameState);
+                    tg.showAlert("Бонус успешно зачислен! В реальной игре здесь будет окно оплаты Telegram Stars.");
+                }
+            });
         } catch (e) {
             console.error("Payment error", e);
         }
@@ -1857,22 +1867,39 @@ export default function App() {
                             <div className="text-lg lg:text-2xl font-display text-purple-400 flex items-center gap-1 lg:gap-2">{format(gameState.souls)} <Skull size={14} className="lg:w-4 lg:h-4"/></div>
                         </div>
 
-                        {window.Telegram?.WebApp && (
-                            <button 
-                                onClick={() => {
-                                    try {
-                                        const text = `Я на STAGE ${Math.floor(gameState.totalKills/5)+1}-${gameState.subStage} в AnimeSoul! Мой урон: ${format(getStaticDps(gameState))}`;
-                                        (window as any).Telegram?.WebApp?.sendData?.(text);
-                                    } catch (e) {}
-                                }}
-                                className="flex flex-col items-center lg:items-end text-green-400 hover:text-green-300 transition-colors"
-                            >
-                                <span className="text-[8px] lg:text-[10px] font-black anime-header">Share</span>
-                                <div className="text-lg lg:text-2xl font-display flex items-center gap-1 lg:gap-2">
-                                    <Share size={14} className="lg:w-4 lg:h-4"/>
-                                </div>
-                            </button>
-                        )}
+                                <button 
+                                    onClick={() => {
+                                        const tg = (window as any).Telegram?.WebApp;
+                                        const text = encodeURIComponent(`Я на STAGE ${Math.floor(gameState.totalKills/5)+1} в AnimeSoul! Присоединяйся к битве!`);
+                                        const url = encodeURIComponent(`https://t.me/YourBotUser`); // User should replace this with their actual bot link
+                                        const shareUrl = `https://t.me/share/url?url=${url}&text=${text}`;
+                                        
+                                        if (tg) {
+                                            tg.openTelegramLink(shareUrl);
+                                        } else {
+                                            window.open(shareUrl, '_blank');
+                                        }
+                                    }}
+                                    className="flex flex-col items-center lg:items-end text-green-400 hover:text-green-300 transition-colors"
+                                >
+                                    <span className="text-[8px] lg:text-[10px] font-black anime-header">Share</span>
+                                    <div className="text-lg lg:text-2xl font-display flex items-center gap-1 lg:gap-2">
+                                        <Share size={14} className="lg:w-4 lg:h-4"/>
+                                    </div>
+                                </button>
+
+                                <button 
+                                    onClick={() => {
+                                        setNewName(playerName);
+                                        setIsSettingsOpen(true);
+                                    }}
+                                    className="flex flex-col items-center lg:items-end text-zinc-400 hover:text-zinc-200 transition-colors"
+                                >
+                                    <span className="text-[8px] lg:text-[10px] font-black anime-header">Setups</span>
+                                    <div className="text-lg lg:text-2xl font-display flex items-center gap-1 lg:gap-2">
+                                        <Settings size={14} className="lg:w-4 lg:h-4"/>
+                                    </div>
+                                </button>
                     </div>
                 </div>
 
@@ -1976,6 +2003,88 @@ export default function App() {
 
                 {/* Gacha Modal Overlay */}
                 <AnimatePresence>
+                    {isSettingsOpen && (
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4 lg:p-0"
+                            onClick={() => setIsSettingsOpen(false)}
+                        >
+                            <motion.div 
+                                initial={{ scale: 0.9, y: 20 }}
+                                animate={{ scale: 1, y: 0 }}
+                                exit={{ scale: 0.9, y: 20 }}
+                                className="w-full max-w-sm aaa-glass p-6 rounded-[2.5rem] border-red-500/30 flex flex-col gap-6 relative"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="text-center">
+                                    <h2 className="text-3xl font-black text-red-500 italic uppercase">Настройки</h2>
+                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Control Center</p>
+                                </div>
+
+                                <div className="flex flex-col gap-4">
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-xs font-black text-zinc-400 uppercase ml-2">Имя Игрока</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={newName} 
+                                                onChange={e => setNewName(e.target.value.slice(0, 20))}
+                                                className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl py-3 px-4 text-zinc-100 font-bold focus:border-red-500 outline-none transition-all pr-12"
+                                                placeholder="Введите имя..."
+                                            />
+                                            <button 
+                                                onClick={() => {
+                                                    if (newName.trim()) {
+                                                        setPlayerName(newName.trim());
+                                                        (window as any).Telegram?.WebApp?.showAlert?.("Имя успешно изменено!");
+                                                    }
+                                                }}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center text-white"
+                                            >
+                                                <Check size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="aaa-glass p-4 rounded-3xl border-zinc-800/50 flex flex-col gap-2">
+                                        <div className="text-xs font-black text-zinc-400 uppercase mb-1 flex items-center gap-2">
+                                            <RotateCcw size={12} /> Опасная зона
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                if (window.confirm("ВЫ УВЕРЕНЫ? ВЕСЬ ПРОГРЕСС БУДЕТ УДАЛЕН НАВСЕГДА!")) {
+                                                    localStorage.removeItem('animeSoul_save');
+                                                    window.location.reload();
+                                                }
+                                            }}
+                                            className="w-full py-2 bg-red-900/40 border border-red-500/50 text-red-100 font-black text-[10px] uppercase tracking-tighter rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                                        >
+                                            Сбросить весь прогресс
+                                        </button>
+                                    </div>
+
+                                    <div className="aaa-glass p-4 rounded-3xl border-yellow-500/20 bg-yellow-900/5 flex flex-col gap-2">
+                                        <div className="text-xs font-black text-yellow-500 uppercase flex items-center gap-2">
+                                            <Star size={12} /> Завдання для доната
+                                        </div>
+                                        <p className="text-[10px] text-zinc-500 font-medium leading-relaxed italic">
+                                            Для работы реальных Telegram Stars необходимо подключить бота к платежному провайдеру и иметь бэкенд для создания инвойсов. В текущем окружении используется демо-режим.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <button 
+                                    onClick={() => setIsSettingsOpen(false)}
+                                    className="absolute -top-4 -right-4 w-10 h-10 bg-zinc-800 border-2 border-zinc-700 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:border-red-500 transition-all shadow-xl"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </motion.div>
+                        </motion.div>
+                    )}
+
                     {gachaModal.show && (
                         <motion.div 
                             initial={{ opacity: 0 }}
