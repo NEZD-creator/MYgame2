@@ -778,6 +778,7 @@ export default function App() {
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
     const [userRank, setUserRank] = useState<number | null>(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
+    const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     
     const popupIdRef = useRef(0);
     const activeDpsBufRef = useRef(0);
@@ -874,21 +875,23 @@ export default function App() {
         });
 
         const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                setIsAuthReady(true);
-            }
+            setIsAuthReady(true);
         });
 
         const q = query(collection(db, 'leaderboard'), orderBy('stage', 'desc'), limit(10));
         const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => doc.data());
             setLeaderboard(data);
+            setIsLoadingLeaderboard(false);
             
             if (auth.currentUser) {
                 const myRank = snapshot.docs.findIndex(doc => doc.id === auth.currentUser?.uid);
                 if (myRank !== -1) setUserRank(myRank + 1);
             }
-        }, (err) => handleFirestoreError(err, 'LIST', 'leaderboard'));
+        }, (err) => {
+            setIsLoadingLeaderboard(false);
+            handleFirestoreError(err, 'LIST', 'leaderboard');
+        });
 
         return () => {
             window.removeEventListener('contextmenu', handleContextMenu);
@@ -1491,8 +1494,10 @@ export default function App() {
                             </div>
                             
                             <div className="flex flex-col gap-2 z-10">
-                                {leaderboard.length === 0 ? (
+                                {isLoadingLeaderboard ? (
                                     <div className="text-center py-8 text-zinc-500 font-bold animate-pulse italic">Загрузка рейтинга...</div>
+                                ) : leaderboard.length === 0 ? (
+                                    <div className="text-center py-8 text-zinc-500 font-bold italic">Мир еще не видел героев... Будь первым!</div>
                                 ) : (
                                     leaderboard.map((p, i) => (
                                         <div key={i} className={`flex justify-between items-center p-2 rounded-xl border ${p.uid === auth.currentUser?.uid ? 'bg-red-900/40 border-red-500' : 'bg-zinc-900/50 border-red-900/30'}`}>
