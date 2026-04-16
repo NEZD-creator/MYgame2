@@ -31,7 +31,7 @@ declare global {
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share } from 'lucide-react';
+import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star } from 'lucide-react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Float, ContactShadows, Sparkles as DreiSparkles, Outlines } from '@react-three/drei';
 import * as THREE from 'three';
@@ -215,9 +215,58 @@ const TABS = [
     { id: 'hero', label: 'Протагонист', icon: Sword },
     { id: 'skills', label: 'Навыки', icon: Zap },
     { id: 'shop', label: 'Магазин', icon: ShoppingBag },
-    { id: 'arts', label: 'Реликвии', icon: Gem },
+    { id: 'arts', label: 'Реликвии', icon: Skull },
+    { id: 'donate', label: 'Буст', icon: Star },
     { id: 'leaderboard', label: 'Рейтинг', icon: Trophy },
-    { id: 'prestige', label: 'Исекай', icon: Skull },
+    { id: 'prestige', label: 'Исекай', icon: Sparkles },
+];
+
+const DONATE_ITEMS = [
+    { 
+        id: 'crystals_small', 
+        name: 'Горсть Звезд', 
+        desc: '1,000 Кристаллов для Гачи', 
+        stars: 50, 
+        icon: '💎',
+        action: (set: any) => set((prev: any) => ({ ...prev, crystals: prev.crystals + 1000 }))
+    },
+    { 
+        id: 'gold_boost', 
+        name: 'Золотая Лихорадка', 
+        desc: 'Мгновенно: x1000 золота от текущего этапа', 
+        stars: 125, 
+        icon: '💰',
+        action: (set: any) => set((prev: any) => {
+            const stage = Math.floor(prev.totalKills / 5) + 1;
+            const stageGold = Math.floor(80 * Math.pow(1.45, stage)) / 12;
+            return { ...prev, gold: prev.gold + (stageGold * 1000) };
+        })
+    },
+    { 
+        id: 'infinite_spirits', 
+        name: 'Дар Богов', 
+        desc: '50,000 Душ для покупки Реликвий', 
+        stars: 250, 
+        icon: '🔥',
+        action: (set: any) => set((prev: any) => ({ ...prev, souls: prev.souls + 50000 }))
+    },
+    { 
+        id: 'super_pack', 
+        name: 'Набор Героя', 
+        desc: '5k Кристаллов + 100k Душ + x5000 золота', 
+        stars: 499, 
+        icon: '🎁',
+        action: (set: any) => set((prev: any) => {
+            const stage = Math.floor(prev.totalKills / 5) + 1;
+            const stageGold = Math.floor(80 * Math.pow(1.45, stage)) / 12;
+            return { 
+                ...prev, 
+                crystals: prev.crystals + 5000,
+                souls: prev.souls + 100000,
+                gold: prev.gold + (stageGold * 5000)
+            };
+        })
+    },
 ];
 
 function HeroModel({ id = 0 }: { id?: number }) {
@@ -1186,6 +1235,32 @@ export default function App() {
         });
     };
 
+    const handlePayment = (item: any) => {
+        const tg = (window as any).Telegram?.WebApp;
+        if (!tg) return alert("Доступно только в Telegram!");
+
+        // Telegram Stars Invoice URL construction (Mock)
+        // In real app, you would fetch this from your backend
+        const invoiceUrl = `https://t.me/stars_payment_mock?item=${item.id}&amount=${item.stars}`;
+        
+        // Show Telegram Payment Popup
+        try {
+            if (tg.isVersionAtLeast('6.1')) {
+                // Mock success for preview, in production use Telegram Payment APIs
+                tg.showConfirm(`Купить "${item.name}" за ${item.stars} ⭐?`, (ok: boolean) => {
+                    if (ok) {
+                        item.action(setGameState);
+                        tg.showAlert("Покупка успешно завершена!");
+                    }
+                });
+            } else {
+                tg.openTelegramLink(invoiceUrl);
+            }
+        } catch (e) {
+            console.error("Payment error", e);
+        }
+    };
+
     const rollGacha = () => {
         if (gameState.crystals < 100) {
             setGachaModal(prev => ({ ...prev, show: true, error: "Нужно 100 кристаллов!" }));
@@ -1622,6 +1697,40 @@ export default function App() {
                         >
                             Переродиться
                         </button>
+                    </div>
+                );
+            case 'donate':
+                return (
+                    <div className="flex flex-col gap-4">
+                        <div className="aaa-glass p-6 rounded-3xl text-center bg-gradient-to-br from-yellow-900/20 to-black border-yellow-500/30">
+                            <Star className="w-12 h-12 text-yellow-500 mx-auto mb-2 animate-pulse" />
+                            <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">Магазин Звезд</h2>
+                            <p className="text-xs text-yellow-500/70 font-bold">Поддержите разработку и станьте сильнее!</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 gap-3">
+                            {DONATE_ITEMS.map((item) => (
+                                <div key={item.id} className="aaa-glass p-4 rounded-3xl flex items-center justify-between gap-4 border-zinc-800 hover:border-yellow-500/50 transition-colors group">
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-4xl group-hover:scale-110 transition-transform">{item.icon}</div>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-black text-zinc-100 uppercase tracking-tight">{item.name}</span>
+                                            <span className="text-[10px] text-zinc-500 font-bold leading-tight">{item.desc}</span>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => handlePayment(item)}
+                                        className="aaa-btn py-3 px-6 bg-yellow-600 hover:bg-yellow-500 text-black font-black flex items-center gap-1 rounded-2xl whitespace-nowrap"
+                                    >
+                                        {item.stars} ⭐
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="p-4 text-center">
+                            <p className="text-[10px] text-zinc-600 font-bold italic">Оплата производится через внутреннюю валюту Telegram Stars</p>
+                        </div>
                     </div>
                 );
             default: return null;
