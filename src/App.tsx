@@ -55,7 +55,7 @@ type GameState = {
     mainHero: { id: number; name: string; ability: string };
     unlockedHeroes: number[];
     skills: { id: number; name: string; desc: string; cd: number; last: number }[];
-    arts: { id: number; name: string; desc: string; cost: number; owned: boolean }[];
+    arts: { id: number; name: string; desc: string; cost: number; owned: boolean; multiplier?: number }[];
     enemy: { hp: number; max: number; name: string };
     buffs: {
         frenzyUntil: number;
@@ -103,7 +103,15 @@ const INITIAL_STATE: GameState = {
         { id:1, name:'Кристалл Маны', desc:'x2 Урона клика', cost:250, owned:false },
         { id:2, name:'Кольцо Времени', desc:'+5с к боссам', cost:500, owned:false },
         { id:3, name:'Крылья Ангела', desc:'x2 Пассивный DPS', cost:1000, owned:false },
-        { id:4, name:'Песочные Часы', desc:'-20% КД Навыков', cost:2000, owned:false }
+        { id:4, name:'Песочные Часы', desc:'-20% КД Навыков', cost:2000, owned:false },
+        { id:5, name:'Печать Жатвы', desc:'+25% Душ с боссов', cost:5000, owned:false },
+        { id:6, name:'Кубок Изобилия', desc:'+50% Золота отовсюду', cost:15000, owned:false },
+        { id:7, name:'Зеркало Иллюзий', desc:'Шанс крита +10%', cost:30000, owned:false },
+        { id:8, name:'Сердце Титана', desc:'Урон x3 (общий)', cost:75000, owned:false },
+        { id:9, name:'Глаз Пустоты', desc:'КД Навыков -15%', cost:150000, owned:false },
+        { id:10, name:'Корона Грёз', desc:'Награды Гачи x2', cost:300000, owned:false },
+        { id:11, name:'Эссенция Бессмертия', desc:'Таймер боссов +10с', cost:750000, owned:false },
+        { id:12, name:'Меч Истины', desc:'Урон x10 (общий)', cost:2000000, owned:false }
     ],
     enemy: { hp: 100, max: 100, name: 'Слайм' }
 };
@@ -123,7 +131,9 @@ function getClickDmg(state: GameState) {
     if (state.mainHero.id === 2) dmg *= 1.5;
     
     // Calculate critical hit
-    const critChance = 0.05 + state.player.gear.armor * 0.02; // Base 5% + 2% per armor level
+    let critChance = 0.05 + state.player.gear.armor * 0.02; // Base 5% + 2% per armor level
+    if (state.arts[7]?.owned) critChance += 0.10; // Mirror of Illusions
+
     let critMultiplier = 2 + state.player.gear.armor * 0.1; // Base 200% + 10% per armor level
     if (state.mainHero.id === 1) critMultiplier += 0.2;
     
@@ -133,6 +143,8 @@ function getClickDmg(state: GameState) {
 
     if (state.mainHero.id === 3) dmg *= 2;
     if(state.arts[1].owned) dmg *= 2;
+    if(state.arts[8]?.owned) dmg *= 3; // Heart of Titan
+    if(state.arts[12]?.owned) dmg *= 10; // Sword of Truth
     
     if (state.buffs.wrathUntil > Date.now()) dmg *= 10;
     return Math.floor(dmg);
@@ -146,6 +158,8 @@ function getStaticDps(state: GameState) {
     dps *= (1 + state.glory * 0.25);
     if(state.arts[3].owned) dps *= 2;
     if (state.mainHero.id === 3) dps *= 2;
+    if(state.arts[8]?.owned) dps *= 3; // Heart of Titan
+    if(state.arts[12]?.owned) dps *= 10; // Sword of Truth
     
     if (state.buffs.wrathUntil > Date.now()) dps *= 10;
     return Math.floor(dps);
@@ -158,6 +172,7 @@ function spawnMonster(state: GameState): GameState {
     let maxHp = Math.floor((isBoss ? 400 : 80) * Math.pow(1.45, stage));
     let bTime = 30;
     if (state.arts[2].owned) bTime += 5;
+    if (state.arts[11]?.owned) bTime += 10; // Immortal Essence
     
     const prefixes = ['Теневой', 'Кровавый', 'Пустотный', 'Адский', 'Древний', 'Хаотичный', 'Призрачный', 'Темный', 'Алый', 'Механический'];
     const names = ['Слайм', 'Бестия', 'Демон', 'Дракон', 'Голем', 'Призрак', 'Странник', 'Охотник', 'Разрушитель', 'Скелет'];
@@ -186,13 +201,16 @@ function applyDamage(state: GameState, amt: number, isClick: boolean): GameState
         // Gold reward is tied to enemy HP/12 to keep it proportional
         let rew = Math.floor(newState.enemy.max / 12);
         if(newState.arts[0].owned) rew *= 2;
+        if(newState.arts[6]?.owned) rew *= 1.5; // Chalice of Abundance
         newState.gold += rew;
         
         newState.totalKills++;
         if(newState.isBoss) {
             newState.subStage = 1;
             newState.crystals += 3; // Reduced boss crystal grant to balance Gacha
-            newState.souls += Math.floor(stage * 1.5); // Grant souls on boss kill
+            let soulGain = Math.floor(stage * 1.5);
+            if (newState.arts[5]?.owned) soulGain = Math.floor(soulGain * 1.25); // Harvest Seal
+            newState.souls += soulGain;
         } else {
             newState.subStage++;
         }
@@ -208,6 +226,19 @@ function format(n: number) {
     if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
     if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
     return Math.floor(n).toString();
+}
+
+/**
+ * Generates a stable guest name based on a string (like a UID)
+ */
+function generateGuestName(uid: string) {
+    let hash = 0;
+    for (let i = 0; i < uid.length; i++) {
+        hash = ((hash << 5) - hash) + uid.charCodeAt(i);
+        hash |= 0; 
+    }
+    const num = Math.abs(hash % 10000).toString().padStart(4, '0');
+    return `Guest #${num}`;
 }
 
 const TABS = [
@@ -940,6 +971,13 @@ export default function App() {
             setIsAuthReady(true);
             if (user) {
                 setAuthError(null);
+                // If the user's name is still 'Аноним', try to give them a guest ID if no TG name was found
+                setPlayerName(prev => {
+                    if (prev === 'Аноним') {
+                        return generateGuestName(user.uid);
+                    }
+                    return prev;
+                });
             }
         });
 
@@ -1301,13 +1339,16 @@ export default function App() {
             const stage = Math.floor(prev.totalKills / 5) + 1;
             const stageGold = Math.floor(80 * Math.pow(1.45, stage)) / 12;
 
+            let mult = prize.multiplier || 1;
+            if (gameState.arts[10]?.owned) mult *= 2; // Crown of Dreams
+
             if (prize.type === 'souls') next.souls += prize.amount;
             if (prize.type === 'crystals') next.crystals += prize.amount;
             if (prize.type === 'gold') next.gold += prize.amount;
             
             // Dynamic rewards based on stage
-            if (prize.type === 'gold_relative') next.gold += Math.floor(stageGold * prize.multiplier);
-            if (prize.type === 'souls_relative') next.souls += Math.floor(stage * 2 * prize.multiplier);
+            if (prize.type === 'gold_relative') next.gold += Math.floor(stageGold * mult);
+            if (prize.type === 'souls_relative') next.souls += Math.floor(stage * 2 * mult);
             
             return next;
         });
@@ -1550,7 +1591,7 @@ export default function App() {
                                     >
                                         <span className="flex justify-between items-center">
                                             <span>{ready ? 'ACTIVATE' : 'COOLDOWN'}</span>
-                                            <span>{ready ? s.cd : Math.max(0, Math.ceil(s.cd * (gameState.arts[4].owned ? 0.8 : 1) - (Date.now() - s.last) / 1000))}s</span>
+                                            <span>{ready ? s.cd : Math.max(0, Math.ceil(s.cd * skillCdMult - (Date.now() - s.last) / 1000))}s</span>
                                         </span>
                                     </button>
                                 </div>
@@ -1601,6 +1642,8 @@ export default function App() {
                     </div>
                 );
             case 'arts':
+                // Check for skill cooldown reduction from relics
+                const skillCdMult = (gameState.arts[4].owned ? 0.8 : 1) * (gameState.arts[9]?.owned ? 0.85 : 1);
                 return (
                     <div className="flex flex-col gap-3">
                         {gameState.arts.map((a, i) => (
@@ -2018,11 +2061,14 @@ export default function App() {
                                                         const stage = Math.floor(prev.totalKills / 5) + 1;
                                                         const stageGold = Math.floor(80 * Math.pow(1.45, stage)) / 12;
 
+                                                        let mult = prize.multiplier || 1;
+                                                        if (prev.arts[10]?.owned) mult *= 2; // Crown of Dreams
+
                                                         if (prize.type === 'souls') next.souls += prize.amount;
                                                         if (prize.type === 'crystals') next.crystals += prize.amount;
                                                         if (prize.type === 'gold') next.gold += prize.amount;
-                                                        if (prize.type === 'gold_relative') next.gold += Math.floor(stageGold * prize.multiplier);
-                                                        if (prize.type === 'souls_relative') next.souls += Math.floor(stage * 2 * prize.multiplier);
+                                                        if (prize.type === 'gold_relative') next.gold += Math.floor(stageGold * mult);
+                                                        if (prize.type === 'souls_relative') next.souls += Math.floor(stage * 2 * mult);
 
                                                         return next;
                                                     });
