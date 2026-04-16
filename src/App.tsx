@@ -889,7 +889,12 @@ export default function App() {
 
         const q = query(collection(db, 'leaderboard'), orderBy('stage', 'desc'), limit(15));
         const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => doc.data());
+            const data = snapshot.docs
+                .map(doc => doc.data())
+                .filter((u: any) => {
+                    const name = (u.username || '').toLowerCase();
+                    return !name.includes('gemini') && !name.includes('ais agent') && !name.includes('ais_agent');
+                });
             setLeaderboard(data);
             setIsLoadingLeaderboard(false);
             
@@ -927,7 +932,10 @@ export default function App() {
             stage > lastSyncedStageRef.current || 
             (now - lastSyncTimeRef.current > 60000);
 
-        if (shouldSync) {
+        const lowerName = playerName.toLowerCase();
+        const isAI = lowerName.includes('gemini') || lowerName.includes('ais agent') || lowerName.includes('ais_agent');
+
+        if (shouldSync && !isAI) {
             const uid = auth.currentUser.uid;
             const entry = {
                 uid,
