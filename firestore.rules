@@ -1,0 +1,44 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: leaderboard
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - ID matching the document key
+    //   - username: string (required, max 32 chars) - Player name
+    //   - stage: number (required, >= 1) - Stage level
+    //   - subStage: number (required, 1-5) - Sub-stage
+    //   - dps: number (required, >= 0) - Damage per second
+    //   - glory: number (required, >= 0) - Glory points
+    //   - lastUpdated: timestamp (required) - Update time
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isValidLeaderboardEntry(data) {
+      return data.keys().hasAll(['uid', 'username', 'stage', 'subStage', 'dps', 'glory', 'lastUpdated']) &&
+             data.keys().hasOnly(['uid', 'username', 'stage', 'subStage', 'dps', 'glory', 'lastUpdated']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.username is string && data.username.size() >= 1 && data.username.size() <= 32 &&
+             data.stage is number && data.stage >= 1 &&
+             data.subStage is number && data.subStage >= 1 && data.subStage <= 5 &&
+             data.dps is number && data.dps >= 0 &&
+             data.glory is number && data.glory >= 0 &&
+             data.lastUpdated is timestamp;
+    }
+
+    match /leaderboard/{uid} {
+      allow read: if true;
+      allow create, update: if isOwner(uid) && isValidLeaderboardEntry(request.resource.data);
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "LeaderboardEntry": {
+      "title": "Leaderboard Entry",
+      "description": "A single entry in the global leaderboard",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique ID of the player" },
+        "username": { "type": "string", "description": "Display name of the player" },
+        "stage": { "type": "number", "description": "Current stage level" },
+        "subStage": { "type": "number", "description": "Current sub-stage" },
+        "dps": { "type": "number", "description": "Total DPS" },
+        "glory": { "type": "number", "description": "Total Glory" },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "Timestamp of the last update" }
+      },
+      "required": ["uid", "username", "stage", "subStage", "dps", "glory", "lastUpdated"]
+    }
+  },
+  "firestore": {
+    "/leaderboard/{uid}": {
+      "schema": "LeaderboardEntry",
+      "description": "Global leaderboard collection"
+    }
+  }
+}
