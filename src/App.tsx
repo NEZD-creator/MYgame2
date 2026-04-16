@@ -703,12 +703,12 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
 }
 
 const GACHA_PRIZES = [
-    { type: 'souls', amount: 1000, text: "1000 Душ", color: "#eab308" },
-    { type: 'crystals', amount: 200, text: "200 Кристаллов", color: "#a855f7" },
-    { type: 'gold', amount: 15000, text: "15000 Золота", color: "#3b82f6" },
-    { type: 'gold', amount: 2000, text: "2000 Золота", color: "#9ca3af" },
-    { type: 'souls', amount: 500, text: "500 Душ", color: "#f59e0b" },
-    { type: 'crystals', amount: 50, text: "50 Кристаллов", color: "#ec4899" },
+    { type: 'gold', amount: 5000000, text: "5M Золота", color: "#3b82f6", weight: 40 },
+    { type: 'souls', amount: 5000, text: "5K Душ", color: "#f59e0b", weight: 30 },
+    { type: 'crystals', amount: 150, text: "150 Кристаллов", color: "#a855f7", weight: 15 },
+    { type: 'gold', amount: 100000000, text: "100M Золота", color: "#1e40af", weight: 10 },
+    { type: 'souls', amount: 50000, text: "50K Душ", color: "#7c2d12", weight: 4 },
+    { type: 'crystals', amount: 1000, text: "1K Кристаллов", color: "#db2777", weight: 1 },
 ];
 
 export default function App() {
@@ -770,7 +770,7 @@ export default function App() {
     const [activeTab, setActiveTab] = useState('team');
     const [damagePopups, setDamagePopups] = useState<{id: number, val: number, x: number, y: number}[]>([]);
     const [lastActiveDps, setLastActiveDps] = useState(0);
-    const [gachaModal, setGachaModal] = useState<{show: boolean, spinning: boolean, prize: any, rotation: number}>({show: false, spinning: false, prize: null, rotation: 0});
+    const [gachaModal, setGachaModal] = useState<{show: boolean, spinning: boolean, prize: any, rotation: number, error?: string | null}>({show: false, spinning: false, prize: null, rotation: 0});
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [playerName, setPlayerName] = useState('Аноним');
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -1167,15 +1167,31 @@ export default function App() {
     };
 
     const rollGacha = () => {
-        if (gameState.crystals < 50 || gachaModal.show) return;
+        if (gameState.crystals < 50) {
+            setGachaModal(prev => ({ ...prev, show: true, error: "Недостаточно кристаллов!" }));
+            setTimeout(() => setGachaModal(prev => ({ ...prev, error: null })), 2000);
+            return;
+        }
+        if (gachaModal.spinning) return;
         
-        const prizeIndex = Math.floor(Math.random() * GACHA_PRIZES.length);
+        // Weight-based selection
+        const totalWeight = GACHA_PRIZES.reduce((acc, p) => acc + (p.weight || 1), 0);
+        let random = Math.random() * totalWeight;
+        let prizeIndex = 0;
+        for (let i = 0; i < GACHA_PRIZES.length; i++) {
+            random -= (GACHA_PRIZES[i].weight || 1);
+            if (random <= 0) {
+                prizeIndex = i;
+                break;
+            }
+        }
+
         const extraSpins = 5;
         const segmentAngle = 360 / GACHA_PRIZES.length;
-        const targetRotation = extraSpins * 360 + (360 - (prizeIndex * segmentAngle + segmentAngle / 2));
+        const targetRotation = gachaModal.rotation + (extraSpins * 360) + (360 - (prizeIndex * segmentAngle + segmentAngle / 2) - (gachaModal.rotation % 360));
 
         setGameState(prev => ({ ...prev, crystals: prev.crystals - 50 }));
-        setGachaModal({ show: true, spinning: true, prize: null, rotation: targetRotation });
+        setGachaModal(prev => ({ ...prev, show: true, spinning: true, prize: null, rotation: targetRotation, error: null }));
         
         setTimeout(() => {
             setGachaModal(prev => ({ ...prev, spinning: false, prize: GACHA_PRIZES[prizeIndex] }));
@@ -1639,6 +1655,10 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center justify-center lg:justify-end gap-3 lg:gap-6 w-full lg:w-auto order-3 mt-1 lg:mt-0 py-1 lg:py-0 border-t lg:border-none border-white/5">
+                        <div className="flex flex-col items-center lg:items-end text-zinc-400">
+                            <span className="text-[8px] lg:text-[10px] font-black anime-header">Rank</span>
+                            <div className="text-lg lg:text-2xl font-display flex items-center gap-1">#{userRank || '?'}</div>
+                        </div>
                         <div className="flex flex-col items-center lg:items-end text-orange-400 group relative cursor-help">
                             <span className="text-[8px] lg:text-[10px] font-black anime-header">Glory</span>
                             <div className="text-lg lg:text-2xl font-display flex items-center gap-1 lg:gap-2">{format(gameState.glory)} <Trophy size={14} className="lg:w-4 lg:h-4"/></div>
@@ -1789,6 +1809,19 @@ export default function App() {
                             >
                                 <div className="text-2xl lg:text-3xl font-black text-yellow-500 uppercase tracking-widest z-10 drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">Gacha Wheel</div>
                                 
+                                {gachaModal.error && (
+                                    <div className="absolute top-16 left-0 w-full text-center text-red-500 font-black text-sm z-50 animate-bounce">
+                                        {gachaModal.error}
+                                    </div>
+                                )}
+
+                                <button 
+                                    onClick={() => setGachaModal(prev => ({ ...prev, show: false }))}
+                                    className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors"
+                                >
+                                    <ArrowRight className="rotate-180" size={24} />
+                                </button>
+                                
                                 <div className="relative w-48 h-48 lg:w-64 lg:h-64 flex items-center justify-center z-10 mb-2 lg:mb-4 mt-2">
                                     <div className="absolute inset-0 rounded-full border-[6px] lg:border-[8px] border-zinc-800 shadow-[0_0_30px_rgba(234,179,8,0.3)] z-0 pointer-events-none"></div>
 
@@ -1825,17 +1858,36 @@ export default function App() {
                                     <motion.div 
                                         initial={{ opacity: 0, y: 20 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        className="flex flex-col items-center gap-4 z-10"
+                                        className="flex flex-col items-center gap-3 z-10 w-full"
                                     >
                                         <div className={`text-xl font-black text-center text-white drop-shadow-md`}>
-                                            {gachaModal.prize.text}
+                                            Приз: {gachaModal.prize.text}
                                         </div>
-                                        <button 
-                                            onClick={acceptGacha}
-                                            className="aaa-btn py-3 px-8 rounded-xl font-bold text-lg uppercase"
-                                        >
-                                            Забрать
-                                        </button>
+                                        <div className="flex gap-2 w-full">
+                                            <button 
+                                                onClick={acceptGacha}
+                                                className="aaa-btn flex-1 py-3 rounded-xl font-bold text-sm uppercase bg-zinc-800 border-zinc-700"
+                                            >
+                                                Забрать
+                                            </button>
+                                            <button 
+                                                onClick={() => {
+                                                    // Add prize first then roll again
+                                                    const prize = gachaModal.prize;
+                                                    setGameState(prev => {
+                                                        let next = { ...prev };
+                                                        if (prize.type === 'souls') next.souls += prize.amount;
+                                                        if (prize.type === 'crystals') next.crystals += prize.amount;
+                                                        if (prize.type === 'gold') next.gold += prize.amount;
+                                                        return next;
+                                                    });
+                                                    rollGacha();
+                                                }}
+                                                className="aaa-btn flex-1 py-3 rounded-xl font-bold text-sm uppercase bg-red-600 border-red-500"
+                                            >
+                                                Еще раз
+                                            </button>
+                                        </div>
                                     </motion.div>
                                 )}
                             </motion.div>
