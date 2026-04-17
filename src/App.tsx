@@ -1901,7 +1901,7 @@ export default function App() {
                                     onClick={() => {
                                         const tg = (window as any).Telegram?.WebApp;
                                         const text = encodeURIComponent(`Я на STAGE ${Math.floor(gameState.totalKills/5)+1} в AnimeSoul! Присоединяйся к битве!`);
-                                        const url = encodeURIComponent(`https://t.me/YourBotUser`); // User should replace this with their actual bot link
+                                        const url = encodeURIComponent(`https://t.me/Cyberclickeridle_bot`);
                                         const shareUrl = `https://t.me/share/url?url=${url}&text=${text}`;
                                         
                                         if (tg) {
