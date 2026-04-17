@@ -1413,6 +1413,7 @@ export default function App() {
     };
 
     const renderTabContent = () => {
+        const skillCdMult = (gameState.arts[4].owned ? 0.8 : 1) * (gameState.arts[9]?.owned ? 0.85 : 1);
         switch (activeTab) {
             case 'team':
                 return (
@@ -1675,7 +1676,6 @@ export default function App() {
                 );
             case 'arts':
                 // Check for skill cooldown reduction from relics
-                const skillCdMult = (gameState.arts[4].owned ? 0.8 : 1) * (gameState.arts[9]?.owned ? 0.85 : 1);
                 return (
                     <div className="flex flex-col gap-3">
                         {gameState.arts.map((a, i) => (
@@ -1901,7 +1901,7 @@ export default function App() {
                                     onClick={() => {
                                         const tg = (window as any).Telegram?.WebApp;
                                         const text = encodeURIComponent(`Я на STAGE ${Math.floor(gameState.totalKills/5)+1} в AnimeSoul! Присоединяйся к битве!`);
-                                        const url = encodeURIComponent(`https://t.me/Cyberclickeridle_bot`);
+                                        const url = encodeURIComponent(`https://t.me/YourBotUser`); // User should replace this with their actual bot link
                                         const shareUrl = `https://t.me/share/url?url=${url}&text=${text}`;
                                         
                                         if (tg) {
