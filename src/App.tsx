@@ -790,12 +790,12 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
 }
 
 const GACHA_PRIZES = [
-    { type: 'gold_relative', multiplier: 25, text: "Мешок Золота", color: "#3b82f6", weight: 40 },
-    { type: 'souls_relative', multiplier: 5, text: "Сгусток Душ", color: "#f59e0b", weight: 30 },
-    { type: 'crystals', amount: 300, text: "300 Кристаллов", color: "#a855f7", weight: 15 },
-    { type: 'gold_relative', multiplier: 500, text: "Гора Золота", color: "#1e40af", weight: 10 },
-    { type: 'souls_relative', multiplier: 50, text: "Дар Предков", color: "#7c2d12", weight: 4 },
-    { type: 'crystals', amount: 5000, text: "Джекпот Книжника", color: "#db2777", weight: 1 },
+    { type: 'gold_relative', multiplier: 25, text: "Мешок Золота", desc: "x25 золота от этапа", color: "#3b82f6", weight: 40 },
+    { type: 'souls_relative', multiplier: 5, text: "Сгусток Душ", desc: "x5 душ за этап", color: "#f59e0b", weight: 30 },
+    { type: 'crystals', amount: 300, text: "300 Кристаллов", desc: "+300 кристаллов", color: "#a855f7", weight: 15 },
+    { type: 'gold_relative', multiplier: 500, text: "Гора Золота", desc: "x500 золота от этапа", color: "#1e40af", weight: 10 },
+    { type: 'souls_relative', multiplier: 50, text: "Дар Предков", desc: "x50 душ за этап", color: "#7c2d12", weight: 4 },
+    { type: 'crystals', amount: 5000, text: "Джекпот Книжника", desc: "+5000 кристаллов", color: "#db2777", weight: 1 },
 ];
 
 export default function App() {
@@ -989,7 +989,7 @@ export default function App() {
             }
         });
 
-        const q = query(collection(db, 'leaderboard'), orderBy('stage', 'desc'), limit(15));
+        const q = query(collection(db, 'leaderboard'), orderBy('powerScore', 'desc'), limit(15));
         const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs
                 .map(doc => ({ ...doc.data(), id: doc.id }))
@@ -1042,6 +1042,9 @@ export default function App() {
 
         if (shouldSync && !isAI) {
             const uid = auth.currentUser.uid;
+            // powerScore takes into account glory (major) and kills (minor) to ensure prestige always moves you up
+            const powerScore = (gameState.glory * 1000000) + gameState.totalKills;
+            
             const entry = {
                 uid,
                 username: playerName,
@@ -1049,6 +1052,7 @@ export default function App() {
                 subStage: gameState.subStage,
                 dps: getStaticDps(gameState),
                 glory: gameState.glory,
+                powerScore,
                 lastUpdated: serverTimestamp()
             };
 
@@ -1292,16 +1296,28 @@ export default function App() {
         });
     };
 
-    const handlePayment = (item: any) => {
+    const handlePayment = async (item: any) => {
         const tg = (window as any).Telegram?.WebApp;
         if (!tg) return;
 
         try {
-            // Note: Real stars require a backend to call createInvoiceLink
-            tg.showConfirm(`Это демо-режим. Начислить "${item.name}" за ${item.stars} ⭐ (эмуляция покупки)?`, (ok: boolean) => {
+            // Для реальных Stars: вы должны отправить запрос на свой бэкенд, 
+            // который вернет invoice_link через API Телеграма (method: createInvoiceLink)
+            // 
+            // Пример:
+            // const response = await fetch('YOUR_BACKEND_URL/create-invoice', { 
+            //   method: 'POST', 
+            //   body: JSON.stringify({ item_id: item.id, user_id: tg.initDataUnsafe.user.id }) 
+            // });
+            // const { invoice_link } = await response.json();
+            // tg.openTelegramLink(invoice_link);
+
+            tg.showConfirm(`Вы хотите купить "${item.name}" за ${item.stars} ⭐?`, (ok: boolean) => {
                 if (ok) {
+                    // В реальной версии здесь будет ожидание успешной оплаты от бэкенда.
+                    // Для демо сохраняем моментальное начисление:
                     item.action(setGameState);
-                    tg.showAlert("Бонус успешно зачислен! В реальной игре здесь будет окно оплаты Telegram Stars.");
+                    tg.showAlert("Бонус зачислен! (В реальной версии донат требует подключения вашего бэкенда к боту)");
                 }
             });
         } catch (e) {
@@ -2064,15 +2080,6 @@ export default function App() {
                                             Сбросить весь прогресс
                                         </button>
                                     </div>
-
-                                    <div className="aaa-glass p-4 rounded-3xl border-yellow-500/20 bg-yellow-900/5 flex flex-col gap-2">
-                                        <div className="text-xs font-black text-yellow-500 uppercase flex items-center gap-2">
-                                            <Star size={12} /> Завдання для доната
-                                        </div>
-                                        <p className="text-[10px] text-zinc-500 font-medium leading-relaxed italic">
-                                            Для работы реальных Telegram Stars необходимо подключить бота к платежному провайдеру и иметь бэкенд для создания инвойсов. В текущем окружении используется демо-режим.
-                                        </p>
-                                    </div>
                                 </div>
 
                                 <button 
@@ -2153,6 +2160,9 @@ export default function App() {
                                     >
                                         <div className={`text-xl font-black text-center text-white drop-shadow-md`}>
                                             Приз: {gachaModal.prize.text}
+                                        </div>
+                                        <div className="text-xs text-yellow-500 font-bold uppercase tracking-wider mb-1">
+                                            {gachaModal.prize.desc}
                                         </div>
                                         <div className="flex gap-2 w-full">
                                             <button 
