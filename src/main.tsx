@@ -1,10 +1,13 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
+import { TonConnectUIProvider } from '@tonconnect/ui-react';
 import App from './App.tsx';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <TonConnectUIProvider manifestUrl="https://ais-dev-i23mijz2ljza6sfpg72euo-783580602421.europe-west2.run.app/tonconnect-manifest.json">
+      <App />
+    </TonConnectUIProvider>
   </StrictMode>,
 );

@@ -35,6 +35,7 @@ import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, Ar
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Float, ContactShadows, Sparkles as DreiSparkles, Outlines } from '@react-three/drei';
 import * as THREE from 'three';
+import { useTonConnectUI } from '@tonconnect/ui-react';
 
 import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, handleFirestoreError } from './firebase';
 
@@ -257,7 +258,7 @@ const DONATE_ITEMS = [
         id: 'crystals_small', 
         name: 'Горсть Звезд', 
         desc: '1,000 Кристаллов для Гачи', 
-        stars: 50, 
+        ton: 0.1, 
         icon: '💎',
         action: (set: any) => set((prev: any) => ({ ...prev, crystals: prev.crystals + 1000 }))
     },
@@ -265,7 +266,7 @@ const DONATE_ITEMS = [
         id: 'gold_boost', 
         name: 'Золотая Лихорадка', 
         desc: 'Мгновенно: x1000 золота от текущего этапа', 
-        stars: 125, 
+        ton: 0.25, 
         icon: '💰',
         action: (set: any) => set((prev: any) => {
             const stage = Math.floor(prev.totalKills / 5) + 1;
@@ -277,7 +278,7 @@ const DONATE_ITEMS = [
         id: 'infinite_spirits', 
         name: 'Дар Богов', 
         desc: '50,000 Душ для покупки Реликвий', 
-        stars: 250, 
+        ton: 0.5, 
         icon: '🔥',
         action: (set: any) => set((prev: any) => ({ ...prev, souls: prev.souls + 50000 }))
     },
@@ -285,7 +286,7 @@ const DONATE_ITEMS = [
         id: 'super_pack', 
         name: 'Набор Героя', 
         desc: '5k Кристаллов + 100k Душ + x5000 золота', 
-        stars: 499, 
+        ton: 1.0, 
         icon: '🎁',
         action: (set: any) => set((prev: any) => {
             const stage = Math.floor(prev.totalKills / 5) + 1;
@@ -860,6 +861,7 @@ export default function App() {
     });
     
     const [activeTab, setActiveTab] = useState('team');
+    const [tonConnectUI] = useTonConnectUI();
     const [damagePopups, setDamagePopups] = useState<{id: number, val: number, x: number, y: number}[]>([]);
     const [lastActiveDps, setLastActiveDps] = useState(0);
     const [gachaModal, setGachaModal] = useState<{show: boolean, spinning: boolean, prize: any, rotation: number, error?: string | null}>({show: false, spinning: false, prize: null, rotation: 0});
@@ -1298,30 +1300,34 @@ export default function App() {
 
     const handlePayment = async (item: any) => {
         const tg = (window as any).Telegram?.WebApp;
-        if (!tg) return;
+        
+        if (!tonConnectUI.connected) {
+            await tonConnectUI.openModal();
+            return;
+        }
 
         try {
-            // Для реальных Stars: вы должны отправить запрос на свой бэкенд, 
-            // который вернет invoice_link через API Телеграма (method: createInvoiceLink)
-            // 
-            // Пример:
-            // const response = await fetch('YOUR_BACKEND_URL/create-invoice', { 
-            //   method: 'POST', 
-            //   body: JSON.stringify({ item_id: item.id, user_id: tg.initDataUnsafe.user.id }) 
-            // });
-            // const { invoice_link } = await response.json();
-            // tg.openTelegramLink(invoice_link);
+            // My Wallet: UQA211DJ_gT_WbR9J3zqO5U4pStcr_xRL2sdfGRi139lRybB
+            const transaction = {
+                validUntil: Math.floor(Date.now() / 1000) + 600, // 10 minutes
+                messages: [
+                    {
+                        address: "UQA211DJ_gT_WbR9J3zqO5U4pStcr_xRL2sdfGRi139lRybB",
+                        amount: (item.ton * 1e9).toString(), // convert to nanoTON
+                    }
+                ]
+            };
 
-            tg.showConfirm(`Вы хотите купить "${item.name}" за ${item.stars} ⭐?`, (ok: boolean) => {
-                if (ok) {
-                    // В реальной версии здесь будет ожидание успешной оплаты от бэкенда.
-                    // Для демо сохраняем моментальное начисление:
-                    item.action(setGameState);
-                    tg.showAlert("Бонус зачислен! (В реальной версии донат требует подключения вашего бэкенда к боту)");
-                }
-            });
+            const result = await tonConnectUI.sendTransaction(transaction);
+            
+            if (result) {
+                // Successful transaction sent
+                item.action(setGameState);
+                tg?.showAlert?.(`Оплата прошла успешно! Вы получили: ${item.name}`);
+            }
         } catch (e) {
             console.error("Payment error", e);
+            tg?.showAlert?.("Ошибка при совершении транзакции. Убедитесь, что у вас достаточно TON.");
         }
     };
 
@@ -1771,15 +1777,23 @@ export default function App() {
             case 'donate':
                 return (
                     <div className="flex flex-col gap-4">
-                        <div className="aaa-glass p-6 rounded-3xl text-center bg-gradient-to-br from-yellow-900/20 to-black border-yellow-500/30">
-                            <Star className="w-12 h-12 text-yellow-500 mx-auto mb-2 animate-pulse" />
-                            <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">Магазин Звезд</h2>
-                            <p className="text-xs text-yellow-500/70 font-bold">Поддержите разработку и станьте сильнее!</p>
+                        <div className="aaa-glass p-6 rounded-3xl text-center bg-gradient-to-br from-blue-900/20 to-black border-blue-500/30">
+                            <Wallet className="w-12 h-12 text-blue-400 mx-auto mb-2 animate-pulse" />
+                            <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">TON Shop</h2>
+                            <p className="text-xs text-blue-400/70 font-bold">Поддержите разработку через TON!</p>
+                            {!tonConnectUI.connected && (
+                                <button 
+                                    onClick={() => tonConnectUI.openModal()}
+                                    className="mt-4 px-6 py-2 bg-blue-600 rounded-xl text-white font-bold text-xs uppercase"
+                                >
+                                    Подключить Кошелек
+                                </button>
+                            )}
                         </div>
                         
                         <div className="grid grid-cols-1 gap-3">
                             {DONATE_ITEMS.map((item) => (
-                                <div key={item.id} className="aaa-glass p-4 rounded-3xl flex items-center justify-between gap-4 border-zinc-800 hover:border-yellow-500/50 transition-colors group">
+                                <div key={item.id} className="aaa-glass p-4 rounded-3xl flex items-center justify-between gap-4 border-zinc-800 hover:border-blue-500/50 transition-colors group">
                                     <div className="flex items-center gap-4">
                                         <div className="text-4xl group-hover:scale-110 transition-transform">{item.icon}</div>
                                         <div className="flex flex-col">
@@ -1789,16 +1803,16 @@ export default function App() {
                                     </div>
                                     <button 
                                         onClick={() => handlePayment(item)}
-                                        className="aaa-btn py-3 px-6 bg-yellow-600 hover:bg-yellow-500 text-black font-black flex items-center gap-1 rounded-2xl whitespace-nowrap"
+                                        className="aaa-btn py-3 px-6 bg-blue-600 hover:bg-blue-500 text-white font-black flex items-center gap-1 rounded-2xl whitespace-nowrap"
                                     >
-                                        {item.stars} ⭐
+                                        {item.ton} TON
                                     </button>
                                 </div>
                             ))}
                         </div>
 
                         <div className="p-4 text-center">
-                            <p className="text-[10px] text-zinc-600 font-bold italic">Оплата производится через внутреннюю валюту Telegram Stars</p>
+                            <p className="text-[10px] text-zinc-600 font-bold italic">Оплата производится через TON Connect</p>
                         </div>
                     </div>
                 );
