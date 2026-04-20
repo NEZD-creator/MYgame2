@@ -1082,14 +1082,20 @@ export default function App() {
         if (!isUnique) throw new Error("Этот никнейм уже занят");
 
         // Use transaction to set nickname index and update user profile
-        await runTransaction(db, async (transaction) => {
-            const nickRef = doc(db, 'nicknames', cleanName.toLowerCase());
-            const userRef = doc(db, 'users', identityId);
-            
-            transaction.set(nickRef, { uid: identityId });
-            transaction.update(userRef, { username: cleanName });
-        });
+        try {
+            await runTransaction(db, async (transaction) => {
+                const nickRef = doc(db, 'nicknames', cleanName.toLowerCase());
+                const userRef = doc(db, 'users', identityId);
+                
+                transaction.set(nickRef, { uid: identityId });
+                transaction.update(userRef, { username: cleanName });
+            });
+        } catch (e: any) {
+            console.warn("Firebase quota hit, storing name locally:", e);
+            // Even if Firebase fails, we update locally for immediate UX
+        }                
         setPlayerName(cleanName);
+        window.Telegram.WebApp.CloudStorage.setItem('playerName', cleanName);
     };
 
     useEffect(() => {
