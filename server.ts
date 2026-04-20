@@ -16,7 +16,19 @@ async function startServer() {
     res.setHeader('Content-Security-Policy', "frame-ancestors *;");
     res.removeHeader('X-Frame-Options');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
+  });
+
+  app.get('/tonconnect-manifest.json', (req, res) => {
+    res.json({
+      url: `https://${req.get('host')}`,
+      name: "Isekai Quest",
+      iconUrl: "https://picsum.photos/seed/anime_isekai_ton/256/256",
+      termsOfServiceUrl: `https://${req.get('host')}/terms`,
+      privacyPolicyUrl: `https://${req.get('host')}/privacy`
+    });
   });
 
   if (process.env.NODE_ENV === 'production') {

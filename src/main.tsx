@@ -4,9 +4,11 @@ import { TonConnectUIProvider } from '@tonconnect/ui-react';
 import App from './App.tsx';
 import './index.css';
 
+const manifestUrl = new URL('tonconnect-manifest.json', window.location.href).toString();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <TonConnectUIProvider manifestUrl="https://ais-dev-i23mijz2ljza6sfpg72euo-783580602421.europe-west2.run.app/tonconnect-manifest.json">
+    <TonConnectUIProvider manifestUrl={manifestUrl}>
       <App />
     </TonConnectUIProvider>
   </StrictMode>,
