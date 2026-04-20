@@ -885,37 +885,45 @@ export default function App() {
             
             // Strictly enforce cooldowns
             const stageChanged = stage >= lastSyncedStageRef.current + 1;
-            const cooldown = stageChanged ? 60000 : 180000;
+            const cooldown = stageChanged ? 60000 : 300000; // 1m if stage up, 5m background
 
             if (now - cloudSyncCooldownRef.current < cooldown) return;
 
             try {
                 if (isQuotaExceededRef.current || isQuotaExceededGlobal) return;
 
-                console.log(`Cloud Sync: Saving to identity [${identityId}]...`);
+                console.log(`Cloud Sync: Saving to identity [${identityId}] (Stage: ${stage})...`);
                 
                 const userRef = doc(db, 'users', identityId);
                 const leaderboardRef = doc(db, 'leaderboard', identityId);
 
                 const powerScore = (gameStateRef.current.glory * 1000000) + gameStateRef.current.totalKills;
 
-                const leaderboardEntry = {
-                    uid: identityId,
-                    tgId: (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || null,
-                    googleUid: auth.currentUser!.isAnonymous ? null : auth.currentUser!.uid,
-                    username: playerNameRef.current,
-                    stage,
-                    subStage: gameStateRef.current.subStage,
-                    dps: getStaticDps(gameStateRef.current),
-                    glory: gameStateRef.current.glory,
-                    powerScore,
-                    lastUpdated: serverTimestamp()
+                const userUpdate = { 
+                    ...gameStateRef.current, 
+                    updatedAt: serverTimestamp() 
                 };
 
-                await Promise.all([
-                    setDoc(userRef, { ...gameStateRef.current, updatedAt: serverTimestamp() }, { merge: true }),
-                    setDoc(leaderboardRef, leaderboardEntry, { merge: true })
-                ]);
+                const writes = [setDoc(userRef, userUpdate, { merge: true })];
+
+                // Only update leaderboard if stage increased or enough time passed
+                if (stageChanged || now - lastSyncTimeRef.current > 600000) {
+                    const leaderboardEntry = {
+                        uid: identityId,
+                        tgId: (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || null,
+                        googleUid: auth.currentUser!.isAnonymous ? null : auth.currentUser!.uid,
+                        username: playerNameRef.current,
+                        stage,
+                        subStage: gameStateRef.current.subStage,
+                        dps: getStaticDps(gameStateRef.current),
+                        glory: gameStateRef.current.glory,
+                        powerScore,
+                        lastUpdated: serverTimestamp()
+                    };
+                    writes.push(setDoc(leaderboardRef, leaderboardEntry, { merge: true }));
+                }
+
+                await Promise.all(writes);
 
                 cloudSyncCooldownRef.current = now;
                 lastSyncedStageRef.current = stage;
@@ -1482,6 +1490,75 @@ export default function App() {
             return prev;
         });
     };
+
+    const handleDungeonHit = async () => {
+        if (!activeDungeon || !currentUser) return;
+        const damage = getClickDmg(gameState).dmg;
+        
+        try {
+            const dungeonRef = doc(db, 'dungeons', activeDungeon.id);
+            await runTransaction(db, async (txn) => {
+                const snap = await txn.get(dungeonRef);
+                if (!snap.exists()) return;
+                const d = snap.data();
+                const newHealth = Math.max(0, d.health - damage);
+                txn.update(dungeonRef, { 
+                    health: newHealth, 
+                    lastUpdateBy: currentUser.uid,
+                    updatedAt: serverTimestamp()
+                });
+            });
+
+            // Local feedback
+            const el = document.getElementById('dungeon-monster');
+            if (el) {
+                const rect = el.getBoundingClientRect();
+                const id = popupIdRef.current++;
+                setDamagePopups(p => [...p, { 
+                    id, 
+                    val: damage, 
+                    x: rect.left + rect.width / 2 + (Math.random() - 0.5) * 40,
+                    y: rect.top + rect.height / 2 + (Math.random() - 0.5) * 40,
+                    isCrit: false
+                }]);
+                setTimeout(() => setDamagePopups(p => p.filter(x => x.id !== id)), 700);
+            }
+        } catch (e) { console.error("Dungeon hit error", e); }
+    };
+
+    const leaveDungeon = async () => {
+        if (!activeDungeon) return;
+        try {
+            const dungeonRef = doc(db, 'dungeons', activeDungeon.id);
+            if (getIdentityId() === activeDungeon.hostId) {
+                await updateDoc(dungeonRef, { status: 'closed' });
+            } else {
+                setActiveDungeon(null);
+            }
+        } catch (e) { setActiveDungeon(null); }
+    };
+
+    const updateDungeonPosition = async (x: number, y: number) => {
+        if (!activeDungeon || !currentUser) return;
+        const dungeonRef = doc(db, 'dungeons', activeDungeon.id);
+        const isHost = getIdentityId() === activeDungeon.hostId;
+        await updateDoc(dungeonRef, {
+            [isHost ? 'hostPos' : 'guestPos']: { x, y }
+        });
+    };
+
+    useEffect(() => {
+        if (activeDungeon && activeDungeon.status === 'active' && activeDungeon.health <= 0) {
+            // Victory Reward
+            setGameState(prev => ({
+                ...prev,
+                crystals: prev.crystals + (activeDungeon.reward || 50),
+                glory: prev.glory + 5
+            }));
+            (window as any).Telegram?.WebApp?.showAlert?.(`Победа в Данже! Получено ${activeDungeon.reward} Кристаллов и 5 Славы!`);
+            leaveDungeon();
+        }
+    }, [activeDungeon?.health]);
 
     const renderTabContent = () => {
         const skillCdMult = (gameState.arts[4].owned ? 0.8 : 1) * (gameState.arts[9]?.owned ? 0.85 : 1);
@@ -2491,6 +2568,99 @@ export default function App() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+                <AnimatePresence>
+                    {activeDungeon && activeDungeon.status === 'active' && (
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[110] bg-black flex flex-col items-center justify-center p-6"
+                        >
+                            <div className="absolute inset-0 bg-[#070708]">
+                                <div className="absolute inset-0 bg-gradient-to-b from-red-900/40 via-black to-black opacity-60"></div>
+                                <div 
+                                    className="absolute inset-0 opacity-20 pointer-events-none"
+                                    style={{ background: 'radial-gradient(circle at center, #661a1a 0%, transparent 60%)' }}
+                                />
+                                <div className="absolute top-0 w-full h-px bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-30"></div>
+                            </div>
+
+                            <div className="relative w-full max-w-sm flex flex-col items-center gap-8 z-10 h-full justify-between py-12">
+                                {/* Room Stats */}
+                                <div className="text-center">
+                                    <div className="flex items-center gap-2 mb-2 justify-center">
+                                        <div className="px-3 py-1 bg-red-600 rounded-lg text-[9px] font-black text-white uppercase shadow-lg shadow-red-600/20">Shadow Layer</div>
+                                        <div className="px-3 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-[9px] font-black text-blue-500 uppercase">Co-op Active</div>
+                                    </div>
+                                    <h2 className="text-3xl font-black text-white uppercase tracking-tighter italic">Colossal Fiend</h2>
+                                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.4em]">Ancient Dungeon Guardian</p>
+                                </div>
+
+                                {/* Monster */}
+                                <motion.div 
+                                    id="dungeon-monster"
+                                    animate={{ 
+                                        y: [0, -15, 0],
+                                        scale: [1, 1.05, 1],
+                                        rotate: [0, 1, -1, 0]
+                                    }}
+                                    transition={{ duration: 4, repeat: Infinity }}
+                                    onClick={handleDungeonHit}
+                                    className="w-56 h-56 lg:w-72 lg:h-72 relative flex items-center justify-center cursor-pointer group"
+                                >
+                                    <div className="absolute inset-0 bg-red-600 rounded-full blur-[60px] opacity-20 group-active:scale-125 transition-transform duration-75"></div>
+                                    <Skull className="text-red-500 w-full h-full drop-shadow-[0_0_20px_rgba(239,68,68,0.5)] group-active:scale-95 transition-transform" />
+                                </motion.div>
+
+                                {/* Shared HP Bar */}
+                                <div className="w-full space-y-3">
+                                    <div className="flex justify-between items-end px-2">
+                                        <span className="text-[10px] font-black text-red-500 uppercase tracking-widest italic">Shared HP</span>
+                                        <span className="text-[10px] font-black text-white uppercase">{activeDungeon.health} / {activeDungeon.maxHealth}</span>
+                                    </div>
+                                    <div className="h-6 w-full bg-zinc-900 rounded-full border border-zinc-800 overflow-hidden p-1 shadow-inner relative">
+                                        <motion.div 
+                                            className="h-full bg-gradient-to-r from-red-600 via-orange-500 to-red-600 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+                                            animate={{ width: `${(activeDungeon.health / activeDungeon.maxHealth) * 100}%` }}
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center text-[9px] font-black text-white uppercase drop-shadow-md">
+                                            {Math.round((activeDungeon.health / activeDungeon.maxHealth) * 100)}%
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Allies */}
+                                <div className="flex gap-12 w-full justify-center">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="w-12 h-12 bg-zinc-900 border border-red-500/50 rounded-2xl flex items-center justify-center relative">
+                                            <Users className="text-red-500" size={20} />
+                                            {getIdentityId() === activeDungeon.hostId && <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full"></div>}
+                                        </div>
+                                        <span className="text-[8px] font-black text-zinc-500 uppercase">{activeDungeon.hostName}</span>
+                                    </div>
+                                    <div className="flex flex-col items-center gap-2">
+                                        <motion.div 
+                                            animate={{ scale: activeDungeon.lastUpdateBy === activeDungeon.guestId ? [1, 1.2, 1] : 1 }}
+                                            className="w-12 h-12 bg-zinc-900 border border-blue-500/50 rounded-2xl flex items-center justify-center relative"
+                                        >
+                                            <Users className="text-blue-500" size={20} />
+                                            {getIdentityId() === activeDungeon.guestId && <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full"></div>}
+                                        </motion.div>
+                                        <span className="text-[8px] font-black text-zinc-500 uppercase">{activeDungeon.guestName}</span>
+                                    </div>
+                                </div>
+
+                                <button 
+                                    onClick={leaveDungeon}
+                                    className="text-[9px] font-black text-zinc-600 uppercase hover:text-red-500 transition-colors py-2 px-6 border border-zinc-800 rounded-xl"
+                                >
+                                    Flee Session
+                                </button>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <AnimatePresence>
                     {isSocialOpen && (
                         <SocialSystem 

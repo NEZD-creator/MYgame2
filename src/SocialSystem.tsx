@@ -29,6 +29,9 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
     const [activeDungeon, setActiveDungeon] = useState<any>(null);
     const [isUpdatingName, setIsUpdatingName] = useState(false);
     const [statusText, setStatusText] = useState(playerData.status || 'Легенда AnimeSoul');
+    const [isCreatingClan, setIsCreatingClan] = useState(false);
+    const [newClanName, setNewClanName] = useState('');
+    const [availableClans, setAvailableClans] = useState<any[]>([]);
     
     useEffect(() => {
         if (!uid) return;
@@ -51,9 +54,20 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
             setInvites(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
 
+        // Listen to Clan Membership
+        const qUserClan = query(collection(db, 'clans'), where('members', 'array-contains', uid));
+        const unsubClan = onSnapshot(qUserClan, (snap) => {
+            if (!snap.empty) {
+                setClan({ id: snap.docs[0].id, ...snap.docs[0].data() });
+            } else {
+                setClan(null);
+            }
+        });
+
         return () => {
             unsubFriends();
             unsubInvites();
+            unsubClan();
         };
     }, [uid]);
 
@@ -64,16 +78,54 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
         setSearchResults(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.id !== uid));
     };
 
-    const sendInvite = async (type: 'friend' | 'clan' | 'dungeon', toId: string) => {
-        await addDoc(collection(db, 'invites'), {
-            fromId: uid,
-            fromName: username,
-            toId,
-            type,
-            status: 'pending',
+    const fetchClans = async () => {
+        const q = query(collection(db, 'clans'), limit(10));
+        const snap = await getDocs(q);
+        setAvailableClans(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    };
+
+    useEffect(() => {
+        if (activeTab === 'clans') fetchClans();
+    }, [activeTab]);
+
+    const createClan = async () => {
+        if (newClanName.length < 3) return;
+        if (playerData.gold < 100000) {
+            alert("Нужно 100,000 золота для создания клана!");
+            return;
+        }
+
+        const clanRef = doc(collection(db, 'clans'));
+        await setDoc(clanRef, {
+            name: newClanName,
+            description: 'Мы — легенды!',
+            ownerId: uid,
+            ownerName: username,
+            members: [uid],
+            totalGlory: playerData.glory,
             createdAt: serverTimestamp()
         });
-        (window as any).Telegram?.WebApp?.showAlert?.("Приглашение отправлено!");
+        
+        setIsCreatingClan(false);
+        setNewClanName('');
+        (window as any).Telegram?.WebApp?.showAlert?.("Клан создан!");
+    };
+
+    const sendInvite = async (type: 'friend' | 'clan' | 'dungeon', toId: string) => {
+        try {
+            await addDoc(collection(db, 'invites'), {
+                fromId: uid,
+                fromName: username,
+                toId,
+                type,
+                status: 'pending',
+                createdAt: serverTimestamp(),
+                dungeonId: type === 'dungeon' ? `${uid}_${Date.now()}` : null
+            });
+            (window as any).Telegram?.WebApp?.showAlert?.("Приглашение отправлено!");
+        } catch (e) {
+            alert("Ошибка сети или исчерпан лимит Firebase.");
+        }
     };
 
     const acceptInvite = async (invite: any) => {
@@ -81,6 +133,30 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
             if (invite.type === 'friend') {
                 txn.set(doc(db, `users/${uid}/friends`, invite.fromId), { addedAt: serverTimestamp() });
                 txn.set(doc(db, `users/${invite.fromId}/friends`, uid), { addedAt: serverTimestamp() });
+            } else if (invite.type === 'clan') {
+                const clanRef = doc(db, 'clans', invite.clanId);
+                const clanSnap = await getDoc(clanRef);
+                if (clanSnap.exists()) {
+                    const members = clanSnap.data().members || [];
+                    if (!members.includes(uid)) members.push(uid);
+                    txn.update(clanRef, { members });
+                }
+            } else if (invite.type === 'dungeon') {
+                const dungeonRef = doc(db, 'dungeons', invite.dungeonId);
+                txn.set(dungeonRef, {
+                    hostId: invite.fromId,
+                    hostName: invite.fromName,
+                    guestId: uid,
+                    guestName: username,
+                    status: 'active',
+                    health: 1000,
+                    maxHealth: 1000,
+                    reward: 50,
+                    hostPos: { x: 0, y: 0 },
+                    guestPos: { x: 0, y: 0 },
+                    lastUpdateBy: uid,
+                    updatedAt: serverTimestamp()
+                });
             }
             txn.update(doc(db, 'invites', invite.id), { status: 'accepted' });
         });
@@ -142,7 +218,28 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
                                     </div>
                                     <div className="text-center">
                                         <h3 className="text-2xl font-black text-white tracking-tighter mb-1">{username}</h3>
-                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mb-4">{statusText}</p>
+                                        <div className="flex items-center justify-center gap-2 mb-4 group/status">
+                                            {isUpdatingName ? (
+                                                <input 
+                                                    autoFocus
+                                                    value={statusText}
+                                                    onChange={(e) => setStatusText(e.target.value)}
+                                                    onBlur={async () => {
+                                                        const id = auth.currentUser?.uid;
+                                                        if (id) await updateDoc(doc(db, 'users', id), { status: statusText });
+                                                        setIsUpdatingName(false);
+                                                    }}
+                                                    className="bg-black border border-zinc-800 rounded-lg px-2 py-1 text-[10px] text-white font-black uppercase text-center"
+                                                />
+                                            ) : (
+                                                <p 
+                                                    onClick={() => setIsUpdatingName(true)}
+                                                    className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] cursor-pointer hover:text-white transition-colors"
+                                                >
+                                                    {statusText}
+                                                </p>
+                                            )}
+                                        </div>
                                         <div className="flex gap-2">
                                             <div className="bg-black/50 px-4 py-2 rounded-xl border border-zinc-800">
                                                 <span className="text-[9px] text-zinc-500 font-bold uppercase mr-2">Level</span>
@@ -162,15 +259,20 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
                                     <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                                         <Shield size={12} className="text-red-500" /> Current Clan
                                     </h4>
-                                    <p className="text-sm font-bold text-white mb-2">No Clan Joined</p>
-                                    <button className="text-[9px] text-blue-500 font-black uppercase hover:text-blue-400 transition-colors">Find or Create</button>
+                                    <p className="text-sm font-bold text-white mb-2">{clan ? clan.name : 'No Clan Joined'}</p>
+                                    <button 
+                                        onClick={() => setActiveTab('clans')}
+                                        className="text-[9px] text-blue-500 font-black uppercase hover:text-blue-400 transition-colors"
+                                    >
+                                        {clan ? 'View Clan' : 'Find or Create'}
+                                    </button>
                                 </div>
                                 <div className="p-6 bg-zinc-900/50 rounded-2xl border border-zinc-800">
                                     <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                        <Trophy size={12} className="text-yellow-500" /> Global Rank
+                                        <Trophy size={12} className="text-yellow-500" /> Members
                                     </h4>
-                                    <p className="text-sm font-bold text-white mb-2">#--</p>
-                                    <span className="text-[7px] text-zinc-600 font-bold uppercase tracking-widest">Recalculating...</span>
+                                    <p className="text-sm font-bold text-white mb-2">{clan ? clan.members?.length : 0}</p>
+                                    <span className="text-[7px] text-zinc-600 font-bold uppercase tracking-widest">Global Status OK</span>
                                 </div>
                             </div>
                         </div>
@@ -250,7 +352,7 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
                                         <div key={inv.id} className="p-4 bg-red-600/5 border border-red-600/20 rounded-2xl flex items-center justify-between">
                                             <div>
                                                 <div className="text-[9px] font-black text-white uppercase">{inv.fromName}</div>
-                                                <div className="text-[7px] text-red-400 font-bold uppercase">Wants to be {inv.type === 'friend' ? 'friends' : 'clan mates'}</div>
+                                                <div className="text-[7px] text-red-400 font-bold uppercase">Wants to be {inv.type === 'friend' ? 'friends' : inv.type === 'clan' ? 'clan mates' : 'combat partner'}</div>
                                             </div>
                                             <div className="flex gap-1">
                                                 <button onClick={() => acceptInvite(inv)} className="p-2 bg-green-600 rounded-lg text-white shadow-lg shadow-green-600/20"><Check size={14}/></button>
@@ -297,19 +399,80 @@ export const SocialSystem: React.FC<SocialProps> = ({ uid, username, playerData,
 
                     {activeTab === 'clans' && (
                         <div className="space-y-6">
-                             <div className="p-10 border-2 border-dashed border-zinc-800 rounded-[2.5rem] flex flex-col items-center gap-6 justify-center text-center group">
-                                <div className="w-20 h-20 rounded-[2rem] bg-zinc-900 flex items-center justify-center text-zinc-800 group-hover:text-red-600 transition-colors duration-500">
-                                    <UsersRound size={40} />
+                             {!clan && !isCreatingClan && (
+                                <div className="p-10 border-2 border-dashed border-zinc-800 rounded-[2.5rem] flex flex-col items-center gap-6 justify-center text-center group">
+                                    <div className="w-20 h-20 rounded-[2rem] bg-zinc-900 flex items-center justify-center text-zinc-800 group-hover:text-red-600 transition-colors duration-500">
+                                        <UsersRound size={40} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-white font-black uppercase tracking-tighter text-lg mb-1">Found Your Legacy</h3>
+                                        <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">Join a guild to unlock legacy bonuses and competitive rankings.</p>
+                                    </div>
+                                    <div className="flex gap-2 w-full max-w-[250px]">
+                                        <button onClick={fetchClans} className="flex-1 py-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-[9px] font-black text-zinc-400 uppercase tracking-widest hover:border-zinc-700 transition-all">Refresh</button>
+                                        <button onClick={() => setIsCreatingClan(true)} className="flex-1 py-4 bg-red-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20 hover:scale-105 active:scale-95 transition-all">Create</button>
+                                    </div>
+
+                                    <div className="w-full space-y-2">
+                                        {availableClans.map(c => (
+                                            <div key={c.id} className="p-4 bg-zinc-900 rounded-2xl flex items-center justify-between border border-zinc-800">
+                                                <div className="text-left">
+                                                    <div className="text-[10px] font-black text-white uppercase">{c.name}</div>
+                                                    <div className="text-[7px] text-zinc-500 font-bold uppercase">{c.members?.length || 0}/50 Members</div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => sendInvite('clan', c.ownerId)} 
+                                                    className="px-4 py-2 bg-white/5 rounded-lg text-[8px] font-black text-white hover:bg-white/10 uppercase"
+                                                >
+                                                    Join Request
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-white font-black uppercase tracking-tighter text-lg mb-1">Found Your Legacy</h3>
-                                    <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">Join a guild to unlock legacy bonuses and competitive rankings.</p>
+                             )}
+
+                             {isCreatingClan && (
+                                <div className="p-8 bg-zinc-900 rounded-[2rem] border border-zinc-800 space-y-4">
+                                    <h3 className="text-lg font-black text-white uppercase">Register Clan</h3>
+                                    <input 
+                                        value={newClanName}
+                                        onChange={(e) => setNewClanName(e.target.value)}
+                                        placeholder="CLAN NAME..."
+                                        className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white text-xs font-black uppercase"
+                                    />
+                                    <div className="flex gap-2">
+                                        <button onClick={createClan} className="flex-1 bg-red-600 p-4 rounded-xl text-white text-[10px] font-black uppercase">Initialize (100k G)</button>
+                                        <button onClick={() => setIsCreatingClan(false)} className="px-4 bg-zinc-800 rounded-xl text-zinc-400">Cancel</button>
+                                    </div>
                                 </div>
-                                <div className="flex gap-2 w-full max-w-[250px]">
-                                    <button className="flex-1 py-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-[9px] font-black text-zinc-400 uppercase tracking-widest hover:border-zinc-700 transition-all">Search</button>
-                                    <button className="flex-1 py-4 bg-red-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20 hover:scale-105 active:scale-95 transition-all">Create</button>
+                             )}
+
+                             {clan && (
+                                <div className="space-y-6">
+                                    <div className="p-6 bg-gradient-to-br from-blue-900/20 to-transparent border border-blue-500/20 rounded-[2rem]">
+                                        <div className="flex items-center gap-4 mb-4">
+                                            <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center border border-blue-500/30">
+                                                <Shield className="text-blue-500" size={24} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-black text-white uppercase tracking-tighter">{clan.name}</h3>
+                                                <p className="text-[10px] text-zinc-500 font-bold uppercase">Master: {clan.ownerName}</p>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800">
+                                                <span className="text-[8px] text-zinc-500 font-black uppercase block">Total Glory</span>
+                                                <span className="text-white font-black">{clan.totalGlory}</span>
+                                            </div>
+                                            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800">
+                                                <span className="text-[8px] text-zinc-500 font-black uppercase block">Members</span>
+                                                <span className="text-white font-black">{clan.members?.length}/50</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                             </div>
+                             )}
                         </div>
                     )}
                 </div>

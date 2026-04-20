@@ -37,7 +37,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn(); // Allow searching for friends/clan members
       allow list: if isAdmin() || (isSignedIn() && resource.data.username != null); // Admin can list all, others only public
-      allow create, update: if (isOwner(userId) || isAdmin()) && isValidUserSync(incoming());
+      allow create: if (isOwner(userId) || isAdmin()) && isValidUserSync(incoming());
+      allow update: if (isOwner(userId) || isAdmin()); // Allow flexible updates for status etc.
       allow delete: if isAdmin();
       
       // Friends subcollection
@@ -79,7 +80,7 @@ service cloud.firestore {
     match /dungeons/{dungeonId} {
       allow read: if isSignedIn() && (request.auth.uid == resource.data.hostId || request.auth.uid == resource.data.guestId || isAdmin());
       allow create: if isSignedIn() && incoming().hostId == request.auth.uid && 
-                     incoming().status == 'waiting';
+                     (incoming().status == 'waiting' || incoming().status == 'active');
       allow update: if isSignedIn() && (
         // Joining as guest
         (existing().status == 'waiting' && incoming().guestId == request.auth.uid && 
