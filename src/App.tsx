@@ -615,8 +615,57 @@ export default function App() {
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isCleaning, setIsCleaning] = useState(false);
     const isAdmin = auth.currentUser?.email === 'nevmovenko2004@gmail.com';
+
+    const adminCommands = {
+        addGold: (amount: number = 1e12) => {
+            setGameState(prev => ({ ...prev, gold: prev.gold + amount }));
+            (window as any).Telegram?.WebApp?.showAlert?.(`Добавлено ${format(amount)} золота!`);
+        },
+        addSouls: (amount: number = 10000) => {
+            setGameState(prev => ({ ...prev, souls: prev.souls + amount }));
+            (window as any).Telegram?.WebApp?.showAlert?.(`Добавлено ${format(amount)} душ!`);
+        },
+        addCrystals: (amount: number = 5000) => {
+            setGameState(prev => ({ ...prev, crystals: prev.crystals + amount }));
+            (window as any).Telegram?.WebApp?.showAlert?.(`Добавлено ${format(amount)} кристаллов!`);
+        },
+        addGlory: (amount: number = 100) => {
+            setGameState(prev => ({ ...prev, glory: prev.glory + amount }));
+            (window as any).Telegram?.WebApp?.showAlert?.(`Добавлено ${format(amount)} славы!`);
+        },
+        skipStages: (count: number = 10) => {
+            setGameState(prev => {
+                let next = { ...prev, totalKills: prev.totalKills + (count * 5) };
+                return spawnMonster(next);
+            });
+            (window as any).Telegram?.WebApp?.showAlert?.(`Пропущено ${count} уровней!`);
+        },
+        resetCooldowns: () => {
+            setGameState(prev => ({
+                ...prev,
+                skills: prev.skills.map(s => ({ ...s, last: 0 }))
+            }));
+            (window as any).Telegram?.WebApp?.showAlert?.("Все способности перезаряжены!");
+        },
+        maxEverything: () => {
+            setGameState(prev => ({
+                ...prev,
+                gold: 1e30,
+                souls: 1e15,
+                crystals: 1e9,
+                player: {
+                    lvl: 100,
+                    gear: { sword: 100, armor: 100, wings: 100, ring: 100 }
+                },
+                mercs: prev.mercs.map(m => ({ ...m, level: m.maxLevel })),
+                unlockedHeroes: HEROES_DATA.map(h => h.id)
+            }));
+            (window as any).Telegram?.WebApp?.showAlert?.("РЕЖИМ БОГА АКТИВИРОВАН!");
+        }
+    };
 
     const globalLeaderboardCleanup = async () => {
         if (!isAdmin || isCleaning || isQuotaExceededGlobal) return;
@@ -2161,7 +2210,38 @@ export default function App() {
 
                                     {isAdmin && (
                                         <div className="flex flex-col gap-2 mt-4 p-4 border-2 border-red-500/50 rounded-3xl bg-red-950/20">
-                                            <div className="text-[10px] font-black text-red-500 uppercase text-center mb-1">Admin Panel</div>
+                                            <div className="text-[10px] font-black text-red-500 uppercase text-center mb-1">Owner Dashboard</div>
+                                            
+                                            <div className="grid grid-cols-2 gap-2 mb-2">
+                                                <button onClick={() => adminCommands.addGold()} className="bg-yellow-600/30 border border-yellow-500/50 p-2 rounded-xl text-[10px] font-bold text-yellow-500 hover:bg-yellow-600/50">+1T Gold</button>
+                                                <button onClick={() => adminCommands.addSouls()} className="bg-purple-600/30 border border-purple-500/50 p-2 rounded-xl text-[10px] font-bold text-purple-400 hover:bg-purple-600/50">+10k Souls</button>
+                                                <button onClick={() => adminCommands.addCrystals()} className="bg-blue-600/30 border border-blue-500/50 p-2 rounded-xl text-[10px] font-bold text-blue-400 hover:bg-blue-600/50">+5k Gems</button>
+                                                <button onClick={() => adminCommands.addGlory()} className="bg-orange-600/30 border border-orange-500/50 p-2 rounded-xl text-[10px] font-bold text-orange-400 hover:bg-orange-600/50">+100 Glory</button>
+                                            </div>
+
+                                            <button 
+                                                onClick={() => adminCommands.skipStages()}
+                                                className="w-full py-2 bg-zinc-800 border border-zinc-700 rounded-xl font-bold text-[10px] uppercase text-zinc-300 hover:bg-zinc-700 mb-1"
+                                            >
+                                                Skip 10 Stages
+                                            </button>
+
+                                            <button 
+                                                onClick={() => adminCommands.resetCooldowns()}
+                                                className="w-full py-2 bg-zinc-800 border border-zinc-700 rounded-xl font-bold text-[10px] uppercase text-zinc-300 hover:bg-zinc-700 mb-1"
+                                            >
+                                                Reset Cooldowns
+                                            </button>
+
+                                            <button 
+                                                onClick={() => adminCommands.maxEverything()}
+                                                className="w-full py-2 bg-gradient-to-r from-red-600 to-purple-600 rounded-xl font-black text-[10px] uppercase text-white shadow-lg mb-3"
+                                            >
+                                                God Mode (MAX ALL)
+                                            </button>
+
+                                            <hr className="border-red-500/20 mb-3" />
+
                                             <button 
                                                 onClick={globalLeaderboardCleanup}
                                                 disabled={isCleaning}
@@ -2171,7 +2251,7 @@ export default function App() {
                                                     : 'bg-red-600 text-white hover:bg-red-500 shadow-[0_0_15px_rgba(220,38,38,0.4)]'
                                                 }`}
                                             >
-                                                {isCleaning ? 'Cleaning...' : 'Deep Cleanup Leaderboard'}
+                                                {isCleaning ? 'Cleaning...' : 'Leaderboard Audit'}
                                             </button>
                                         </div>
                                     )}
