@@ -126,8 +126,8 @@ const HEROES_DATA = [
 ];
 
 function getClickDmg(state: GameState, comboMult: number = 1): { dmg: number, isCrit: boolean } {
-    let dmg = (15 + state.player.gear.sword * 25) * (1 + state.player.lvl * 0.25);
-    dmg *= (1 + state.glory * 0.25);
+    let dmg = (15 + Number(state.player.gear.sword) * 25) * (1 + Number(state.player.lvl) * 0.25);
+    dmg *= (1 + Number(state.glory) * 0.25);
     
     if (state.mainHero.id === 2) dmg *= 1.5;
     
@@ -135,10 +135,10 @@ function getClickDmg(state: GameState, comboMult: number = 1): { dmg: number, is
     dmg *= comboMult;
     
     // Calculate critical hit
-    let critChance = 0.05 + state.player.gear.armor * 0.02; // Base 5% + 2% per armor level
+    let critChance = 0.05 + Number(state.player.gear.armor) * 0.02; // Base 5% + 2% per armor level
     if (state.arts[7]?.owned) critChance += 0.10; // Mirror of Illusions
 
-    let critMultiplier = 2 + state.player.gear.armor * 0.1; // Base 200% + 10% per armor level
+    let critMultiplier = 2 + Number(state.player.gear.armor) * 0.1; // Base 200% + 10% per armor level
     if (state.mainHero.id === 1) critMultiplier += 0.2;
     
     let isCrit = false;
@@ -161,10 +161,10 @@ function getClickDmg(state: GameState, comboMult: number = 1): { dmg: number, is
 
 function getStaticDps(state: GameState) {
     let dps = 0;
-    state.mercs.forEach(m => dps += m.atk * m.level);
-    dps *= (1 + state.player.gear.ring * 0.2); // Ring boosts DPS
+    state.mercs.forEach(m => dps += Number(m.atk) * Number(m.level));
+    dps *= (1 + Number(state.player.gear.ring) * 0.2); // Ring boosts DPS
     // Prestige bonus increased to 25% per Glory
-    dps *= (1 + state.glory * 0.25);
+    dps *= (1 + Number(state.glory) * 0.25);
     if(state.arts[3].owned) dps *= 2;
     if (state.mainHero.id === 3) dps *= 2;
     if(state.arts[8]?.owned) dps *= 3; // Heart of Titan
@@ -1029,11 +1029,12 @@ export default function App() {
             const m = prev.mercs[id];
             if (m.level >= m.maxLevel) return prev;
             
+            const currentLvl = Number(m.level) || 0;
             // Economy rework: Merceraries cost multiplier adjusted to 1.15
-            const cost = Math.floor(m.cost * Math.pow(1.15, m.level));
+            const cost = Math.floor(m.cost * Math.pow(1.15, currentLvl));
             if (prev.gold >= cost) {
                 const newMercs = [...prev.mercs];
-                newMercs[id] = { ...m, level: m.level + 1 };
+                newMercs[id] = { ...m, level: currentLvl + 1 };
                 return { ...prev, gold: prev.gold - cost, mercs: newMercs };
             }
             return prev;
@@ -1043,9 +1044,10 @@ export default function App() {
     const upLvl = () => {
         setGameState(prev => {
             if (prev.player.lvl >= 100) return prev;
-            const cost = Math.floor(100 * Math.pow(1.2, prev.player.lvl));
+            const currentLvl = Number(prev.player.lvl) || 1;
+            const cost = Math.floor(100 * Math.pow(1.2, currentLvl));
             if (prev.gold >= cost) {
-                return { ...prev, gold: prev.gold - cost, player: { ...prev.player, lvl: prev.player.lvl + 1 } };
+                return { ...prev, gold: prev.gold - cost, player: { ...prev.player, lvl: currentLvl + 1 } };
             }
             return prev;
         });
@@ -1057,12 +1059,13 @@ export default function App() {
             const baseCost = g === 'sword' ? 150 : g === 'armor' ? 600 : 1500;
             // Slightly reduced multipliers for more frequent upgrades (1.6, 1.7, 1.8 instead of 1.8, 1.9, 2.0)
             const multiplier = g === 'sword' ? 1.6 : g === 'armor' ? 1.7 : 1.8;
-            const cost = Math.floor(baseCost * Math.pow(multiplier, prev.player.gear[g]));
+            const currentLvl = Number(prev.player.gear[g]) || 0;
+            const cost = Math.floor(baseCost * Math.pow(multiplier, currentLvl));
             if (prev.gold >= cost) {
                 return { 
                     ...prev, 
                     gold: prev.gold - cost, 
-                    player: { ...prev.player, gear: { ...prev.player.gear, [g]: prev.player.gear[g] + 1 } } 
+                    player: { ...prev.player, gear: { ...prev.player.gear, [g]: currentLvl + 1 } } 
                 };
             }
             return prev;
@@ -1253,7 +1256,7 @@ export default function App() {
                 return (
                     <div className="flex flex-col gap-3">
                         {gameState.mercs.map((m, i) => {
-                            const cost = Math.floor(m.cost * Math.pow(1.5, m.level));
+                            const cost = Math.floor(m.cost * Math.pow(1.15, m.level));
                             const canBuy = gameState.gold >= cost;
                             return (
                                 <div key={m.id} className="aaa-glass p-3 rounded-3xl flex flex-col gap-2 relative overflow-hidden group">
@@ -1357,7 +1360,10 @@ export default function App() {
                             <div className="absolute -left-4 -top-4 w-20 h-20 bg-gradient-to-br from-red-500/20 to-transparent rounded-full blur-xl"></div>
                             <div className="text-red-500 font-extrabold text-xs uppercase tracking-widest z-10">Hero Level</div>
                             <div className="text-4xl font-black text-zinc-200 my-1 drop-shadow-sm z-10">{gameState.player.lvl}{gameState.player.lvl >= 100 ? ' (MAX)' : ''}</div>
-                            <div className="text-xs text-red-400 font-bold mb-2 uppercase z-10">Click DMG: {format(getClickDmg(gameState).dmg)}</div>
+                            <div className="text-xs text-red-400 font-bold mb-2 uppercase z-10 flex items-center justify-center gap-1">
+                                Click DMG: {format(getClickDmg(gameState, 1 + (comboRef.current / 10)).dmg)}
+                                {comboRef.current > 0 && <span className="text-orange-500 bg-orange-500/20 px-1 rounded animate-pulse">(Combo x{(1 + comboRef.current / 10).toFixed(1)})</span>}
+                            </div>
                             <button  
                                 onClick={upLvl}
                                 disabled={gameState.gold < hCost || gameState.player.lvl >= 100}
@@ -1582,7 +1588,10 @@ export default function App() {
                                         </div>
                                         <div className="flex flex-col items-end text-xs shrink-0">
                                             <span className="text-red-400 font-black">Stage {Math.floor(gameState.totalKills / 5) + 1}</span>
-                                            <span className="text-zinc-500 text-[10px]">{format(getStaticDps(gameState))} DPS</span>
+                                            <span className="text-zinc-500 text-[10px] flex items-center gap-1">
+                                                {format(getStaticDps(gameState))} DPS
+                                                {gameState.buffs.wrathUntil > Date.now() && <span className="text-red-500 font-black">(x10)</span>}
+                                            </span>
                                         </div>
                                     </div>
                                 )}
@@ -1701,7 +1710,12 @@ export default function App() {
                     <div className="flex items-center justify-center lg:justify-start gap-3 lg:gap-10 w-full lg:w-auto order-2 lg:order-1">
                         <div className="flex flex-col text-center lg:text-left">
                             <span className="text-[8px] lg:text-[10px] text-zinc-500 font-black anime-header uppercase">Total DPS</span>
-                            <div className="text-sm lg:text-3xl font-display text-white tracking-widest">{format(getStaticDps(gameState))}</div>
+                            <div className="text-sm lg:text-3xl font-display text-white tracking-widest flex items-center gap-2">
+                                {format(getStaticDps(gameState))}
+                                {gameState.buffs.wrathUntil > Date.now() && (
+                                    <span className="text-[10px] lg:text-base text-red-500 font-black animate-pulse bg-red-500/20 px-2 py-0.5 rounded border border-red-500/50">x10 ГНЕВ</span>
+                                )}
+                            </div>
                         </div>
                         <div className="flex flex-col text-center lg:text-left">
                             <span className="text-[8px] lg:text-[10px] text-yellow-500 font-black anime-header uppercase">Gold</span>
