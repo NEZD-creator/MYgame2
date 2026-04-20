@@ -596,6 +596,20 @@ export default function App() {
         }
         return spawnMonster(INITIAL_STATE);
     });
+
+    useEffect(() => {
+        if (auth.currentUser) {
+            // Sync to Firestore
+            const saveToFirebase = async () => {
+                 const userRef = doc(db, 'users', auth.currentUser!.uid);
+                 await setDoc(userRef, { ...gameState, updatedAt: serverTimestamp() }, { merge: true });
+            };
+            saveToFirebase();
+        } else {
+            // Local save
+            localStorage.setItem('animeSoul_save', JSON.stringify(gameState));
+        }
+    }, [gameState, auth.currentUser]);
     
     const [activeTab, setActiveTab] = useState('team');
     const [tonConnectUI] = useTonConnectUI();
@@ -1948,11 +1962,23 @@ export default function App() {
                                             </button>
                                         </div>
                                     </div>
+
                                     <button onClick={handleGoogleSignIn} className="bg-blue-600 text-white p-2 rounded w-full mt-2 font-black uppercase text-xs">
                                         Привязать Google Аккаунт
                                     </button>
 
-                                    <div className="aaa-glass p-4 rounded-3xl border-zinc-800/50 flex flex-col gap-2">
+                                    {auth.currentUser ? (
+                                        <div className="flex items-center gap-2 text-green-500 font-bold text-xs mt-2 justify-center">
+                                            <Check size={14} /> 
+                                            <span>{auth.currentUser.email || "Авторизован"}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-zinc-500 font-bold text-xs mt-2 justify-center">
+                                            <X size={14} />
+                                            <span>Не авторизован</span>
+                                        </div>
+                                    )}
+
                                         <div className="text-xs font-black text-zinc-400 uppercase mb-1 flex items-center gap-2">
                                             <RotateCcw size={12} /> Опасная зона
                                         </div>
@@ -1968,7 +1994,7 @@ export default function App() {
                                             Сбросить весь прогресс
                                         </button>
                                     </div>
-                                </div>
+                                </motion.div>
 
                                 <button 
                                     onClick={() => setIsSettingsOpen(false)}
