@@ -1994,31 +1994,30 @@ export default function App() {
                                             Сбросить весь прогресс
                                         </button>
                                     </div>
+
+                                    <button 
+                                        onClick={() => setIsSettingsOpen(false)}
+                                        className="absolute -top-4 -right-4 w-10 h-10 bg-zinc-800 border-2 border-zinc-700 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:border-red-500 transition-all shadow-xl"
+                                    >
+                                        <X size={20} />
+                                    </button>
                                 </motion.div>
-
-                                <button 
-                                    onClick={() => setIsSettingsOpen(false)}
-                                    className="absolute -top-4 -right-4 w-10 h-10 bg-zinc-800 border-2 border-zinc-700 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:border-red-500 transition-all shadow-xl"
-                                >
-                                    <X size={20} />
-                                </button>
                             </motion.div>
-                        </motion.div>
-                    )}
+                        )}
 
-                    {gachaModal.show && (
-                        <motion.div 
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-                        >
+                        {gachaModal.show && (
                             <motion.div 
-                                initial={{ scale: 0.8, y: 50 }}
-                                animate={{ scale: 1, y: 0 }}
-                                exit={{ scale: 0.8, y: 50 }}
-                                className="aaa-glass-dark p-6 lg:p-8 rounded-3xl flex flex-col items-center gap-6 w-[95%] max-w-[384px] relative overflow-hidden border-red-500/50"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
                             >
+                                <motion.div 
+                                    initial={{ scale: 0.8, y: 50 }}
+                                    animate={{ scale: 1, y: 0 }}
+                                    exit={{ scale: 0.8, y: 50 }}
+                                    className="aaa-glass-dark p-6 lg:p-8 rounded-3xl flex flex-col items-center gap-6 w-[95%] max-w-[384px] relative overflow-hidden border-red-500/50"
+                                >
                                 <div className="text-2xl lg:text-3xl font-black text-yellow-500 uppercase tracking-widest z-10 drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">Gacha Wheel</div>
                                 
                                 {gachaModal.error && (
