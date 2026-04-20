@@ -9,7 +9,7 @@ const manifestUrl = 'https://ais-dev-i23mijz2ljza6sfpg72euo-783580602421.europe-
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <TonConnectUIProvider manifestUrl={manifestUrl}>
+    <TonConnectUIProvider manifestUrl={manifestUrl} actionsConfiguration={{ twaReturnUrl: 'https://t.me/your_bot_name' }}>
       <App />
     </TonConnectUIProvider>
   </StrictMode>,
