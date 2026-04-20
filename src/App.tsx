@@ -558,47 +558,9 @@ const GACHA_PRIZES = [
 export default function App() {
     const [gameState, setGameState] = useState<GameState>(() => {
         try {
-            const saved = localStorage.getItem('animeSoul_save');
-            if (saved) {
-                let rawData = saved;
-                if (!saved.startsWith('{')) {
-                    try {
-                        rawData = decodeURIComponent(atob(saved));
-                    } catch(e) { rawData = saved; }
-                }
-                const parsed = JSON.parse(rawData); 
-                if (parsed.gold < 0 || isNaN(parsed.gold)) parsed.gold = 0;
-                if (parsed.souls < 0 || isNaN(parsed.souls)) parsed.souls = 0;
-                
-                return {
-                    ...INITIAL_STATE,
-                    ...parsed,
-                    player: {
-                        ...INITIAL_STATE.player,
-                        ...(parsed.player || {}),
-                        gear: {
-                            ...INITIAL_STATE.player.gear,
-                            ...(parsed.player?.gear || {})
-                        }
-                    },
-                    buffs: {
-                        ...INITIAL_STATE.buffs,
-                        ...(parsed.buffs || {})
-                    },
-                    mercs: INITIAL_STATE.mercs.map(m => {
-                        const savedMerc = parsed.mercs?.find((sm: any) => sm.id === m.id);
-                        return savedMerc ? { ...m, level: savedMerc.level } : m;
-                    }),
-                    skills: INITIAL_STATE.skills.map(s => {
-                        const savedSkill = parsed.skills?.find((ss: any) => ss.id === s.id);
-                        return savedSkill ? { ...s, last: savedSkill.last } : s;
-                    }),
-                    arts: INITIAL_STATE.arts.map(a => {
-                        const savedArt = parsed.arts?.find((sa: any) => sa.id === a.id);
-                        return savedArt ? { ...a, owned: savedArt.owned } : a;
-                    })
-                };
-            }
+            // New logic: if Telegram storage enabled, we delay load or initialize default
+            // Sync loading not possible from Telegram, so we initialize with default
+            return INITIAL_STATE;
         } catch (e) { console.error("Load error", e); }
         return spawnMonster(INITIAL_STATE);
     });
@@ -827,6 +789,8 @@ export default function App() {
     }, [isAdmin, isCleaning, lastAutoAudit]);
     const [flyingChest, setFlyingChest] = useState<{x: number, y: number, show: boolean, type: 'gold' | 'gems' | 'souls'}>({x: 0, y: 0, show: false, type: 'gold'});
     
+    // Game refs
+    const USE_TELEGRAM_STORAGE = true;
     const playerNameRef = useRef(playerName);
     const isQuotaExceededRef = useRef(false);
     const comboRef = useRef(0);
@@ -893,6 +857,13 @@ export default function App() {
                 if (isQuotaExceededRef.current || isQuotaExceededGlobal) return;
 
                 console.log(`Cloud Sync: Saving to identity [${identityId}] (Stage: ${stage})...`);
+                
+                if (USE_TELEGRAM_STORAGE) {
+                    window.Telegram.WebApp.CloudStorage.setItem('gameState', JSON.stringify(gameStateRef.current));
+                    cloudSyncCooldownRef.current = now;
+                    lastSyncedStageRef.current = stage;
+                    return;
+                }
                 
                 const userRef = doc(db, 'users', identityId);
                 const leaderboardRef = doc(db, 'leaderboard', identityId);
