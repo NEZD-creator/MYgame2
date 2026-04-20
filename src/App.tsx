@@ -34,7 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 
-import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, updateDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider, isQuotaExceededGlobal } from './firebase';
+import { auth, db, signInAnonymously, signOut, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, updateDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider, isQuotaExceededGlobal } from './firebase';
 import { disableNetwork, getDocs } from 'firebase/firestore';
 
 type GameState = {
@@ -641,9 +641,14 @@ export default function App() {
     const adminCommands = {
         addGold: (amount: number = 1e12) => {
             setGameState(prev => ({ ...prev, gold: prev.gold + amount }));
-            (window as any).Telegram?.WebApp?.showConfirm?.(`Добавить ${format(amount)} золота?`, (ok: boolean) => {
-                if (ok) (window as any).Telegram?.WebApp?.showAlert?.("Готово!");
-            });
+            const tg = (window as any).Telegram?.WebApp;
+            if (tg?.showConfirm) {
+                tg.showConfirm(`Добавить ${format(amount)} золота?`, (ok: boolean) => {
+                    if (ok) tg.showAlert?.("Баланс обновлен!");
+                });
+            } else {
+                alert("Готово!");
+            }
         },
         addSouls: (amount: number = 10000) => {
             setGameState(prev => ({ ...prev, souls: prev.souls + amount }));
@@ -681,22 +686,34 @@ export default function App() {
             }));
         },
         wipeUser: async (targetId: string) => {
-            if (!window.confirm(`Сбросить прогресс пользователю ${targetId}?`)) return;
-            try {
-                await updateDoc(doc(db, 'users', targetId), { ...INITIAL_STATE, updatedAt: serverTimestamp() });
-                await deleteDoc(doc(db, 'leaderboard', targetId));
-                fetchAllUsers();
-                alert("Пользователь сброшен!");
-            } catch (err) { console.error(err); }
+            const tg = (window as any).Telegram?.WebApp;
+            const proceed = () => {
+                updateDoc(doc(db, 'users', targetId), { ...INITIAL_STATE, updatedAt: serverTimestamp() })
+                .then(() => deleteDoc(doc(db, 'leaderboard', targetId)))
+                .then(() => fetchAllUsers())
+                .catch(err => console.error(err));
+            };
+
+            if (tg?.showConfirm) {
+                tg.showConfirm(`Сбросить прогресс пользователю ${targetId}?`, (ok: boolean) => { if (ok) proceed(); });
+            } else if (window.confirm(`Сбросить прогресс ${targetId}?`)) {
+                proceed();
+            }
         },
         deleteUser: async (targetId: string) => {
-            if (!window.confirm(`УДАЛИТЬ ПОЛНОСТЬЮ аккаунт ${targetId}? Это действие необратимо.`)) return;
-            try {
-                await deleteDoc(doc(db, 'users', targetId));
-                await deleteDoc(doc(db, 'leaderboard', targetId));
-                fetchAllUsers();
-                alert("Аккаунт удален!");
-            } catch (err) { console.error(err); }
+            const tg = (window as any).Telegram?.WebApp;
+            const proceed = () => {
+                deleteDoc(doc(db, 'users', targetId))
+                .then(() => deleteDoc(doc(db, 'leaderboard', targetId)))
+                .then(() => fetchAllUsers())
+                .catch(err => console.error(err));
+            };
+
+            if (tg?.showConfirm) {
+                tg.showConfirm(`УДАЛИТЬ аккаунт ${targetId}?`, (ok: boolean) => { if (ok) proceed(); });
+            } else if (window.confirm(`Удалить ${targetId}?`)) {
+                proceed();
+            }
         }
     };
 
@@ -2247,11 +2264,14 @@ export default function App() {
                                     </button>
 
                                     {isAdmin && (
-                                        <div className="flex flex-col gap-2 mt-4 p-4 border-2 border-red-500 rounded-3xl bg-black/80 relative overflow-hidden">
-                                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 via-transparent to-red-600"></div>
-                                            <div className="text-[10px] font-black text-red-500 uppercase text-center mb-2 tracking-[0.2em] italic">Mission Control Panel</div>
+                                        <div className="flex flex-col gap-2 mt-4 p-4 border-2 border-red-500 rounded-3xl bg-black/90 relative overflow-hidden shadow-[0_0_25px_rgba(220,38,38,0.2)]">
+                                            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-red-600 via-zinc-800 to-red-600"></div>
+                                            <div className="text-[10px] font-black text-red-500 uppercase text-center mb-3 tracking-[0.3em] flex items-center justify-center gap-2">
+                                                <div className="w-1 h-1 bg-red-500 rounded-full animate-ping"></div>
+                                                Admin Terminal
+                                            </div>
                                             
-                                            <div className="flex gap-1 mb-3">
+                                            <div className="flex gap-1 mb-4 p-1 bg-zinc-900 rounded-xl border border-zinc-800">
                                                 {(['resources', 'users', 'system'] as const).map(t => (
                                                     <button 
                                                         key={t}
@@ -2259,70 +2279,100 @@ export default function App() {
                                                             setAdminActiveTab(t);
                                                             if (t === 'users') fetchAllUsers();
                                                         }}
-                                                        className={`flex-1 py-1 text-[8px] font-black rounded uppercase transition-all ${adminActiveTab === t ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}
+                                                        className={`flex-1 py-2 text-[8px] font-black rounded-lg uppercase transition-all ${
+                                                            adminActiveTab === t 
+                                                            ? 'bg-red-600 text-white shadow-lg' 
+                                                            : 'text-zinc-500 hover:text-zinc-300'
+                                                        }`}
                                                     >
-                                                        {t}
+                                                        {t === 'resources' ? 'Assets' : t === 'users' ? 'Database' : 'Engine'}
                                                     </button>
                                                 ))}
                                             </div>
 
                                             {adminActiveTab === 'resources' && (
-                                                <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2">
-                                                    <div className="grid grid-cols-2 gap-2 mb-2">
-                                                        <button onClick={() => adminCommands.addGold()} className="bg-yellow-600/30 border border-yellow-500/50 p-2 rounded-xl text-[10px] font-bold text-yellow-500 hover:bg-yellow-600/50">+1T Gold</button>
-                                                        <button onClick={() => adminCommands.addSouls()} className="bg-purple-600/30 border border-purple-500/50 p-2 rounded-xl text-[10px] font-bold text-purple-400 hover:bg-purple-600/50">+10k Souls</button>
-                                                        <button onClick={() => adminCommands.addCrystals()} className="bg-blue-600/30 border border-blue-500/50 p-2 rounded-xl text-[10px] font-bold text-blue-400 hover:bg-blue-600/50">+5k Gems</button>
-                                                        <button onClick={() => adminCommands.addGlory()} className="bg-orange-600/30 border border-orange-500/50 p-2 rounded-xl text-[10px] font-bold text-orange-400 hover:bg-orange-600/50">+100 Glory</button>
+                                                <div className="flex flex-col gap-2 animate-in fade-in duration-300">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <button onClick={() => adminCommands.addGold()} className="bg-zinc-900 border border-yellow-500/30 p-3 rounded-2xl text-[9px] font-black text-yellow-500 hover:bg-yellow-500/10 transition-colors uppercase tracking-wider">Inject Gold</button>
+                                                        <button onClick={() => adminCommands.addSouls()} className="bg-zinc-900 border border-purple-500/30 p-3 rounded-2xl text-[9px] font-black text-purple-400 hover:bg-purple-500/10 transition-colors uppercase tracking-wider">Sync Souls</button>
+                                                        <button onClick={() => adminCommands.addCrystals()} className="bg-zinc-900 border border-blue-500/30 p-3 rounded-2xl text-[9px] font-black text-blue-400 hover:bg-blue-500/10 transition-colors uppercase tracking-wider">Add Gems</button>
+                                                        <button onClick={() => adminCommands.addGlory()} className="bg-zinc-900 border border-orange-500/30 p-3 rounded-2xl text-[9px] font-black text-orange-400 hover:bg-orange-500/10 transition-colors uppercase tracking-wider">Set Glory</button>
                                                     </div>
-                                                    <button onClick={() => adminCommands.maxEverything()} className="w-full py-2 bg-gradient-to-r from-red-600 to-purple-600 rounded-xl font-black text-[10px] uppercase text-white shadow-lg">GOD MODE</button>
+                                                    <button onClick={() => adminCommands.maxEverything()} className="w-full py-4 mt-2 bg-gradient-to-br from-red-600 to-purple-800 rounded-2xl font-black text-[10px] uppercase text-white shadow-[0_4px_15px_rgba(220,38,38,0.3)] hover:scale-[1.02] active:scale-95 transition-all tracking-widest">Acknowledge: God Mode</button>
                                                 </div>
                                             )}
 
                                             {adminActiveTab === 'users' && (
-                                                <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-bottom-2">
+                                                <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-300 pr-1">
                                                     {isLoadingUsers ? (
-                                                        <div className="text-[10px] text-zinc-500 text-center animate-pulse py-4 font-mono">SCANNING DATABASE...</div>
+                                                        <div className="text-[9px] text-zinc-600 text-center py-8 font-mono tracking-tighter uppercase italic">Forensic data scan in progress...</div>
                                                     ) : allUsers.map(u => (
-                                                        <div key={u.id} className="p-2 bg-zinc-900/80 border border-zinc-800 rounded-xl flex flex-col gap-1">
+                                                        <div key={u.id} className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl flex flex-col gap-2 group hover:border-red-500/30 transition-colors shadow-inner">
                                                             <div className="flex justify-between items-center">
-                                                                <span className="text-[10px] font-black text-white truncate max-w-[120px]">{u.id}</span>
-                                                                <span className="text-[8px] text-red-500 font-mono">Lv.{u.player?.lvl || 1}</span>
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[9px] font-black text-zinc-300 truncate max-w-[150px] leading-tight select-all">{u.id}</span>
+                                                                    <span className="text-[7px] text-zinc-500 font-bold uppercase tracking-widest">{u.username || 'No Name'}</span>
+                                                                </div>
+                                                                <div className="bg-black/50 px-2 py-1 rounded-lg border border-red-500/20">
+                                                                    <span className="text-[8px] text-red-500 font-black">LVL {u.player?.lvl || 1}</span>
+                                                                </div>
                                                             </div>
                                                             <div className="flex gap-1">
-                                                                <button onClick={() => adminCommands.wipeUser(u.id)} className="flex-1 bg-orange-600/20 text-orange-500 text-[8px] font-bold py-1 rounded border border-orange-500/30">Wipe</button>
-                                                                <button onClick={() => adminCommands.deleteUser(u.id)} className="flex-1 bg-red-600/20 text-red-500 text-[8px] font-bold py-1 rounded border border-red-500/30">Delete</button>
+                                                                <button onClick={() => adminCommands.wipeUser(u.id)} className="flex-1 bg-zinc-800 text-orange-500 text-[8px] font-black py-2 rounded-xl border border-orange-500/20 hover:bg-orange-500 hover:text-white transition-all uppercase tracking-tighter">Wipe Progress</button>
+                                                                <button onClick={() => adminCommands.deleteUser(u.id)} className="flex-1 bg-zinc-800 text-red-500 text-[8px] font-black py-2 rounded-xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-all uppercase tracking-tighter">Terminate Root</button>
                                                             </div>
                                                         </div>
                                                     ))}
-                                                    <button onClick={fetchAllUsers} className="text-[8px] text-blue-400 font-black uppercase mt-2 hover:underline">Refresh List</button>
+                                                    {allUsers.length === 0 && !isLoadingUsers && <div className="text-center text-[9px] text-zinc-600 py-4 uppercase font-bold">No active clusters found</div>}
+                                                    <button onClick={fetchAllUsers} className="text-[9px] text-blue-500 font-black uppercase mt-3 hover:text-blue-400 transition-colors flex items-center justify-center gap-1"><RotateCcw size={10}/> Sync Registry</button>
                                                 </div>
                                             )}
 
                                             {adminActiveTab === 'system' && (
-                                                <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2">
-                                                    <button onClick={() => adminCommands.skipStages(10)} className="w-full py-2 bg-zinc-900 border border-zinc-800 rounded-xl font-bold text-[10px] uppercase text-zinc-300">Skip 10 Stages</button>
-                                                    <button onClick={() => adminCommands.resetCooldowns()} className="w-full py-2 bg-zinc-900 border border-zinc-800 rounded-xl font-bold text-[10px] uppercase text-zinc-300">Reset CDs</button>
+                                                <div className="flex flex-col gap-2 animate-in fade-in duration-300">
+                                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                                        <button onClick={() => adminCommands.skipStages(10)} className="py-3 bg-zinc-900 border border-zinc-800 rounded-2xl font-black text-[9px] uppercase text-zinc-300 hover:text-white transition-colors">Warp x10</button>
+                                                        <button onClick={() => adminCommands.resetCooldowns()} className="py-3 bg-zinc-900 border border-zinc-800 rounded-2xl font-black text-[9px] uppercase text-zinc-300 hover:text-white transition-colors">Reset CDs</button>
+                                                    </div>
                                                     <button 
                                                         onClick={globalLeaderboardCleanup}
                                                         disabled={isCleaning}
-                                                        className={`w-full py-3 rounded-2xl font-black text-[10px] uppercase transition-all ${isCleaning ? 'bg-zinc-800 text-zinc-500 animate-pulse' : 'bg-red-600 text-white hover:bg-red-500 shadow-xl'}`}
+                                                        className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase transition-all shadow-xl tracking-widest ${
+                                                            isCleaning 
+                                                            ? 'bg-zinc-800 text-zinc-600 animate-pulse' 
+                                                            : 'bg-red-600 text-white hover:bg-red-500 shadow-red-600/20'
+                                                        }`}
                                                     >
-                                                        {isCleaning ? 'AUDITING...' : 'DEEP CLEAN DASHBOARD'}
+                                                        {isCleaning ? 'AUDITING CLUSTERS...' : 'EXECUTE GLOBAL AUDIT'}
                                                     </button>
+                                                    <div className="text-[7px] text-zinc-600 font-bold text-center mt-1 uppercase tracking-widest italic opacity-50">Authorized maintainer access only</div>
                                                 </div>
                                             )}
                                         </div>
                                     )}
 
                                     {auth.currentUser ? (
-                                        <div className="flex items-center gap-2 text-green-500 font-bold text-xs mt-2 justify-center">
-                                            <Check size={14} /> 
-                                            <span>{auth.currentUser.email || "Авторизован"}</span>
+                                        <div className="flex flex-col gap-2 mt-2">
+                                            <div className="flex items-center gap-2 text-green-500 font-bold text-[10px] justify-center bg-green-500/10 py-2 rounded-xl border border-green-500/20 uppercase tracking-widest">
+                                                <Check size={14} /> 
+                                                <span>{auth.currentUser.email || (auth.currentUser.isAnonymous ? "Guest Mode" : "Auth Active")}</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    signOut(auth).then(() => {
+                                                        (window as any).Telegram?.WebApp?.showAlert?.("Вы вышли из системы. Прогресс сохранен в облаке.");
+                                                        window.location.reload();
+                                                    });
+                                                }}
+                                                className="w-full py-2 bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-xl font-black text-[10px] uppercase hover:bg-red-600 hover:text-white transition-all shadow-lg"
+                                            >
+                                                Sign Out / Switch Account
+                                            </button>
                                         </div>
                                     ) : (
-                                        <div className="flex items-center gap-2 text-zinc-500 font-bold text-xs mt-2 justify-center">
+                                        <div className="flex items-center gap-2 text-zinc-500 font-bold text-[10px] mt-2 justify-center py-2 bg-zinc-900 rounded-xl border border-zinc-800 uppercase tracking-widest">
                                             <X size={14} />
-                                            <span>Не авторизован</span>
+                                            <span>Session Offline</span>
                                         </div>
                                     )}
 
@@ -2331,14 +2381,21 @@ export default function App() {
                                         </div>
                                         <button 
                                             onClick={() => {
-                                                if (window.confirm("ВЫ УВЕРЕНЫ? ВЕСЬ ПРОГРЕСС БУДЕТ УДАЛЕН НАВСЕГДА!")) {
+                                                const tg = (window as any).Telegram?.WebApp;
+                                                const proceed = () => {
                                                     localStorage.removeItem('animeSoul_save');
                                                     window.location.reload();
+                                                };
+
+                                                if (tg?.showConfirm) {
+                                                    tg.showConfirm("ВЫ УВЕРЕНЫ? ВЕСЬ ЛОКАЛЬНЫЙ ПРОГРЕСС БУДЕТ УДАЛЕН!", (ok: boolean) => { if (ok) proceed(); });
+                                                } else if (window.confirm("УДАЛИТЬ ЛОКАЛЬНЫЙ ПРОГРЕСС?")) {
+                                                    proceed();
                                                 }
                                             }}
-                                            className="w-full py-2 bg-red-900/40 border border-red-500/50 text-red-100 font-black text-[10px] uppercase tracking-tighter rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                                            className="w-full py-2 bg-red-900/20 border border-red-500/30 text-red-500/70 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-red-600 hover:text-white transition-all"
                                         >
-                                            Сбросить весь прогресс
+                                            Hard Reset (Local Data)
                                         </button>
                                     </div>
 
