@@ -13,9 +13,10 @@ async function startServer() {
 
   // Set headers for maximum compatibility
   app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', "frame-ancestors *;");
+    // Удаляем CSP, так как он конфликтует с TWA и блокирует загрузку
+    res.removeHeader('Content-Security-Policy');
     res.removeHeader('X-Frame-Options');
-    
+
     // Explicitly allow origin based on request for better security
     const origin = req.headers.origin;
     if (origin) {
