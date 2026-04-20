@@ -68,26 +68,26 @@ const INITIAL_STATE: GameState = {
     player: { lvl: 1, gear: { sword: 1, armor: 1, wings: 0, ring: 0 } },
     buffs: { frenzyUntil: 0, autoClickerUntil: 0, wrathUntil: 0 },
     mercs: [
-        { id:0, name:'Сквайр', atk:5, cost:20, level:0, maxLevel: 100 },
-        { id:1, name:'Лучник', atk:22, cost:150, level:0, maxLevel: 100 },
-        { id:2, name:'Маг', atk:95, cost:800, level:0, maxLevel: 100 },
-        { id:3, name:'Самурай', atk:450, cost:4500, level:0, maxLevel: 100 },
-        { id:4, name:'Паладин', atk:1800, cost:22000, level:0, maxLevel: 100 },
-        { id:5, name:'Ассасин', atk:8500, cost:150000, level:0, maxLevel: 100 },
-        { id:6, name:'Призыватель', atk:42000, cost:900000, level:0, maxLevel: 100 },
-        { id:7, name:'Дракон', atk:250000, cost:5000000, level:0, maxLevel: 100 },
-        { id:8, name:'Фея', atk:1200000, cost:25000000, level:0, ability:'+10% к золоту', maxLevel: 100 },
-        { id:9, name:'Котик', atk:5000000, cost:100000000, level:0, ability:'+5% к шансу двойных душ', maxLevel: 100 },
-        { id:10, name:'Слизень', atk:20000000, cost:500000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:11, name:'Призрак', atk:80000000, cost:2500000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:12, name:'Робот', atk:350000000, cost:12000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:13, name:'Демон', atk:1500000000, cost:60000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:14, name:'Ангел', atk:7000000000, cost:300000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:15, name:'Бог', atk:30000000000, cost:1500000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:16, name:'Титан', atk:150000000000, cost:7500000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:17, name:'Вселенная', atk:800000000000, cost:40000000000000, level:0, ability:'+5% к урону', maxLevel: 100 }
+        { id:0, name:'Кли', atk:5, cost:20, level:0, maxLevel: 100 },
+        { id:1, name:'Цици', atk:22, cost:150, level:0, maxLevel: 100 },
+        { id:2, name:'Диона', atk:95, cost:800, level:0, maxLevel: 100 },
+        { id:3, name:'Саю', atk:450, cost:4500, level:0, maxLevel: 100 },
+        { id:4, name:'Нахида', atk:1800, cost:22000, level:0, maxLevel: 100 },
+        { id:5, name:'Дори', atk:8500, cost:150000, level:0, maxLevel: 100 },
+        { id:6, name:'Яояо', atk:42000, cost:900000, level:0, maxLevel: 100 },
+        { id:7, name:'Сиджвин', atk:250000, cost:5000000, level:0, maxLevel: 100 },
+        { id:8, name:'Качина', atk:1200000, cost:25000000, level:0, ability:'+10% к золоту', maxLevel: 100 },
+        { id:9, name:'Паймон', atk:5000000, cost:100000000, level:0, ability:'+5% к шансу двойных душ', maxLevel: 100 },
+        { id:10, name:'Фурина', atk:20000000, cost:500000000, level:0, ability:'+5% к урону', maxLevel: 100 },
+        { id:11, name:'Ху Тао', atk:80000000, cost:2500000000, level:0, ability:'+5% к урону', maxLevel: 100 },
+        { id:12, name:'Нилу', atk:350000000, cost:12000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
+        { id:13, name:'Гань Юй', atk:1500000000, cost:60000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
+        { id:14, name:'Аяка', atk:7000000000, cost:300000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
+        { id:15, name:'Люмин', atk:30000000000, cost:1500000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
+        { id:16, name:'Яэ Мико', atk:150000000000, cost:7500000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
+        { id:17, name:'Райдэн', atk:800000000000, cost:40000000000000, level:0, ability:'+5% к урону', maxLevel: 100 }
     ],
-    mainHero: { id: 0, name: 'Воин', ability: 'Базовый' },
+    mainHero: { id: 0, name: 'Люмин', ability: 'Путешественница' },
     unlockedHeroes: [0],
     skills: [
         { id:0, name:'Удар Звезды', desc:'Урон x50 мгновенно', cd:20, last:0 },
@@ -320,24 +320,24 @@ const GENSHIN_LOLIS = [
 ];
 
 const BOSS_ICONS = [
-    'UI_MonsterIcon_Dragon_Dvalin',
-    'UI_MonsterIcon_Wolf_Boreas',
-    'UI_MonsterIcon_Tartaglia',
-    'UI_MonsterIcon_Signora',
-    'UI_MonsterIcon_Shougun'
+    'Enemy_Dvalin_Icon.png',
+    'Enemy_Andrius_Icon.png',
+    'Enemy_Childe_Icon.png',
+    'Enemy_La_Signora_Icon.png',
+    'Enemy_Magatsu_Mitake_Narukami_no_Mikoto_Icon.png'
 ];
 
 const NORMAL_MONSTERS = [
-    'UI_MonsterIcon_Slime_Fire',
-    'UI_MonsterIcon_Slime_Water',
-    'UI_MonsterIcon_Slime_Wind',
-    'UI_MonsterIcon_Slime_Elec',
-    'UI_MonsterIcon_Hili_Standard',
-    'UI_MonsterIcon_Hili_Wood',
-    'UI_MonsterIcon_Samachurl_Water',
-    'UI_MonsterIcon_Abyss_Fire',
-    'UI_MonsterIcon_RuinGuard',
-    'UI_MonsterIcon_RuinHunter'
+    'Enemy_Pyro_Slime_Icon.png',
+    'Enemy_Hydro_Slime_Icon.png',
+    'Enemy_Anemo_Slime_Icon.png',
+    'Enemy_Electro_Slime_Icon.png',
+    'Enemy_Hilichurl_Icon.png',
+    'Enemy_Wooden_Shield_Hilichurl_Guard_Icon.png',
+    'Enemy_Hydro_Samachurl_Icon.png',
+    'Enemy_Pyro_Abyss_Mage_Icon.png',
+    'Enemy_Ruin_Guard_Icon.png',
+    'Enemy_Ruin_Hunter_Icon.png'
 ];
 
 const HERO_ICONS = [
@@ -457,9 +457,9 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
                 className={`relative z-10 ${isBoss ? 'w-40 h-40 lg:w-64 lg:h-64' : 'w-24 h-24 lg:w-40 lg:h-40'}`}
             >
                 <img 
-                    src={`https://enka.network/ui/${iconName}.png`}
+                    src={`https://genshin-impact.fandom.com/wiki/Special:FilePath/${iconName}`}
                     alt={name}
-                    onError={handleImageError('https://enka.network/ui/UI_MonsterIcon_Slime_Fire.png')}
+                    onError={handleImageError('https://genshin-impact.fandom.com/wiki/Special:FilePath/Enemy_Pyro_Slime_Icon.png')}
                     className={`w-full h-full object-contain filter drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] ${isBoss ? 'brightness-110 drop-shadow-[0_0_30px_rgba(239,68,68,0.6)]' : ''}`}
                     referrerPolicy="no-referrer"
                 />
@@ -669,17 +669,29 @@ export default function App() {
             }
         });
 
-        const q = query(collection(db, 'leaderboard'), orderBy('powerScore', 'desc'), limit(15));
+        const q = query(collection(db, 'leaderboard'), orderBy('powerScore', 'desc'), limit(100));
         const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs
+            const rawData = snapshot.docs
                 .map(doc => ({ ...doc.data(), id: doc.id }))
                 .filter((u: any) => {
                     const name = (u.username || '').toLowerCase();
-                    // More aggressive filtering for AI/Test entries
                     const isAI = name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
                     const isTestAnon = name === 'аноним' && u.stage > 50; 
                     return !isAI && !isTestAnon;
                 });
+            
+            const bestPerName = new Map();
+            rawData.forEach((entry: any) => {
+                const name = (entry.username || '').toLowerCase().trim();
+                if (!bestPerName.has(name) || bestPerName.get(name).powerScore < entry.powerScore) {
+                    bestPerName.set(name, entry);
+                }
+            });
+            
+            const data = Array.from(bestPerName.values())
+                             .sort((a: any, b: any) => b.powerScore - a.powerScore)
+                             .slice(0, 15);
+                             
             setLeaderboard(data);
             setIsLoadingLeaderboard(false);
             
@@ -1116,7 +1128,7 @@ export default function App() {
                                                 {m.level > 0 ? (
                                                     <img 
                                                         src={`https://enka.network/ui/${GENSHIN_LOLIS[i % GENSHIN_LOLIS.length]}.png`} 
-                                                        alt={m.name} 
+                                                        alt={INITIAL_STATE.mercs[m.id].name} 
                                                         onError={handleImageError('https://enka.network/ui/UI_AvatarIcon_Paimon.png')}
                                                         className="w-full h-full object-cover filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
                                                         referrerPolicy="no-referrer"
@@ -1126,7 +1138,7 @@ export default function App() {
                                                 )}
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="font-extrabold text-sm text-slate-700 uppercase tracking-wide">{m.name}</span>
+                                                <span className="font-extrabold text-sm text-slate-700 uppercase tracking-wide">{INITIAL_STATE.mercs[m.id].name}</span>
                                                 <span className="text-xs text-pink-500 font-bold">Lvl {m.level}</span>
                                             </div>
                                         </div>
@@ -1692,7 +1704,7 @@ export default function App() {
                 <div className="h-28 lg:h-32 mt-4 lg:mb-4 relative z-10 flex items-end justify-start lg:justify-center pb-2 lg:pb-4 gap-2 lg:gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar px-2 lg:px-4 w-full lg:max-w-5xl mx-auto shrink-0 flex-nowrap">
                     {gameState.mercs.filter(m => m.level > 0).map((m, i) => (
                         <div key={m.id} className="shrink-0 flex-none h-full">
-                            <TeamAvatar index={i} level={m.level} name={m.name} />
+                            <TeamAvatar index={i} level={m.level} name={INITIAL_STATE.mercs[m.id].name} />
                         </div>
                     ))}
                 </div>
