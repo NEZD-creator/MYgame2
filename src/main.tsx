@@ -9,7 +9,7 @@ const manifestUrl = 'https://project-acn7o.vercel.app/tonconnect-manifest.json';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <TonConnectUIProvider manifestUrl={manifestUrl} uiPreferences={{ theme: THEME.DARK }} actionsConfiguration={{ twaReturnUrl: 'https://t.me/your_bot_username' }}>
+    <TonConnectUIProvider manifestUrl={manifestUrl} uiPreferences={{ theme: THEME.DARK }} actionsConfiguration={{ twaReturnUrl: 'https://t.me/Cyberclickeridle_bot' }}>
       <App />
     </TonConnectUIProvider>
   </StrictMode>,

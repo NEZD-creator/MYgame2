@@ -732,6 +732,9 @@ export default function App() {
 
         // --- Firebase Auth & Leaderboard ---
         const initAuth = async () => {
+            // Wait for auth to initialize from persistence
+            if (auth.currentUser) return; 
+            
             try {
                 await signInAnonymously(auth);
             } catch (err: any) {
@@ -903,15 +906,7 @@ export default function App() {
             const obfuscated = btoa(encodeURIComponent(json));
             localStorage.setItem('animeSoul_save', obfuscated);
             
-            // Sync to Telegram CloudStorage if supported (v6.9+)
-            const tg = (window as any).Telegram?.WebApp;
-            if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-                try {
-                    tg.CloudStorage.setItem('animeSoul_save', obfuscated);
-                } catch (e) {
-                    console.error("Cloud save failed (suppressed error)", e);
-                }
-            }
+            // Sync with Telegram CloudStorage disabled due to 512b data limit (DATA_TOO_LONG errors)
         } catch (e) {
             console.error("Save error");
         }
@@ -1990,8 +1985,18 @@ export default function App() {
                                         </div>
                                     </div>
 
-                                    <button onClick={handleGoogleSignIn} className="bg-blue-600 text-white p-2 rounded w-full mt-2 font-black uppercase text-xs">
-                                        Привязать Google Аккаунт
+                                    <button 
+                                        onClick={handleGoogleSignIn} 
+                                        disabled={auth.currentUser && !auth.currentUser.isAnonymous}
+                                        className={`p-2 rounded w-full mt-2 font-black uppercase text-xs transition-all ${
+                                            auth.currentUser && !auth.currentUser.isAnonymous 
+                                            ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50' 
+                                            : 'bg-blue-600 text-white hover:bg-blue-500 active:scale-95'
+                                        }`}
+                                    >
+                                        {auth.currentUser && !auth.currentUser.isAnonymous 
+                                            ? 'Аккаунт привязан' 
+                                            : 'Привязать Google Аккаунт'}
                                     </button>
 
                                     {auth.currentUser ? (
