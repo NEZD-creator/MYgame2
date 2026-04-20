@@ -726,27 +726,40 @@ export default function App() {
         const tg = (window as any).Telegram?.WebApp;
         
         try {
-            console.log(`[AdminProtocol] Audit mode: ${isAuto ? 'AUTO' : 'USER'}`);
+            console.log(`[AdminProtocol] Audit starting (Mode: ${isAuto ? 'AUTO' : 'USER'})...`);
             const { enableNetwork, writeBatch } = await import('firebase/firestore');
             await enableNetwork(db).catch(() => {});
 
             const lRef = collection(db, 'leaderboard');
-            const q = isAuto ? query(lRef, limit(300), orderBy('updatedAt', 'desc')) : lRef;
+            // Corrected: use 'lastUpdated' as it's the actual field name in leaderboard docs
+            const q = isAuto ? query(lRef, limit(400), orderBy('lastUpdated', 'desc')) : lRef;
             
             const snapshot = await getDocs(q);
-            const registry = new Map();
+            const registry = new Map(); // Canonical ID -> { ref, score }
             const targets: any[] = []; 
 
             snapshot.docs.forEach(docSnap => {
                 const d = docSnap.data();
                 const ref = docSnap.ref;
-                const key = d.tgId ? `tg_${d.tgId}` : (d.googleUid || d.uid || (d.username || '').toLowerCase().trim());
                 
-                const isSus = d.stage > 1200 || d.powerScore > 1e18; 
-                const nameStr = (d.username || '').toLowerCase();
-                const isMock = nameStr.includes('test') || nameStr.includes('gemini') || nameStr.includes('ais agent');
+                // Identify the best possible unique key for this human
+                // Priority: Telegram ID > Google UID > Unique Username > Document ID
+                const nameStr = (d.username || '').toLowerCase().trim();
+                const isGuestName = nameStr.startsWith('guest_') || nameStr === 'аноним' || !nameStr;
+                
+                // Canonical keys
+                let key = null;
+                if (d.tgId) key = `tg_${d.tgId}`;
+                else if (d.googleUid) key = `google_${d.googleUid}`;
+                else if (!isGuestName) key = `name_${nameStr}`;
+                else key = d.uid || docSnap.id;
 
-                if (isSus || isMock || !key) {
+                // High-risk/Broken/Mock data detection
+                const isSus = d.stage > 1500 || d.powerScore > 1e19; 
+                const isMock = nameStr.includes('test') || nameStr.includes('gemini') || nameStr.includes('ais agent');
+                const isOrphanEmpty = isGuestName && d.stage <= 1 && (d.powerScore || 0) < 5;
+
+                if (isSus || isMock || isOrphanEmpty || !key) {
                     targets.push(ref);
                     return;
                 }
@@ -755,32 +768,38 @@ export default function App() {
                     registry.set(key, { ref, score: d.powerScore || 0 });
                 } else {
                     const existingRecord = registry.get(key);
+                    // Deduplication logic: Always keep the record with higher progression
                     if ((d.powerScore || 0) > existingRecord.score) {
                         targets.push(existingRecord.ref);
                         registry.set(key, { ref, score: d.powerScore || 0 });
                     } else {
+                        // Current document is lower or equal, mark for deletion
                         targets.push(ref);
                     }
                 }
             });
 
             if (targets.length > 0) {
+                console.log(`[AdminProtocol] Audit identified ${targets.length} duplicates/shards. Executing batch...`);
+                // Firestore batch limit is 500
                 const bSize = 400;
                 for (let i = 0; i < targets.length; i += bSize) {
                     const batch = writeBatch(db);
                     targets.slice(i, i + bSize).forEach(r => batch.delete(r));
                     await batch.commit();
                 }
+            } else {
+                console.log("[AdminProtocol] Audit complete. Registry is synchronized.");
             }
             
             if (!isAuto) {
-                tg?.showAlert?.(`Audit Complete: Purged ${targets.length} entries.`);
+                tg?.showAlert?.(`Аудит завершен! Удалено объектов: ${targets.length}`);
             } else {
                 setLastAutoAudit(Date.now());
             }
         } catch (err) {
-            console.error("Audit fail:", err);
-            if (!isAuto) tg?.showAlert?.("Sync Error: DB_PARITY_FAIL");
+            console.error("Audit protocol fail:", err);
+            if (!isAuto) tg?.showAlert?.("Сбой синхронизации БД: PARITY_ERROR");
         } finally {
             setIsCleaning(false);
         }
