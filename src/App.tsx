@@ -63,6 +63,7 @@ type GameState = {
     };
     combo: number;
     lastClickTime: number;
+    lastSaveTime: number;
 };
 
 const INITIAL_STATE: GameState = {
@@ -72,25 +73,26 @@ const INITIAL_STATE: GameState = {
     buffs: { frenzyUntil: 0, autoClickerUntil: 0, wrathUntil: 0 },
     combo: 0,
     lastClickTime: 0,
+    lastSaveTime: Date.now(),
     mercs: [
-        { id:0, name:'Кли', atk:5, cost:20, level:0, maxLevel: 100 },
-        { id:1, name:'Цици', atk:22, cost:150, level:0, maxLevel: 100 },
-        { id:2, name:'Диона', atk:95, cost:800, level:0, maxLevel: 100 },
-        { id:3, name:'Саю', atk:450, cost:4500, level:0, maxLevel: 100 },
-        { id:4, name:'Нахида', atk:1800, cost:22000, level:0, maxLevel: 100 },
-        { id:5, name:'Дори', atk:8500, cost:150000, level:0, maxLevel: 100 },
-        { id:6, name:'Яояо', atk:42000, cost:900000, level:0, maxLevel: 100 },
-        { id:7, name:'Сиджвин', atk:250000, cost:5000000, level:0, maxLevel: 100 },
-        { id:8, name:'Качина', atk:1200000, cost:25000000, level:0, ability:'+10% к золоту', maxLevel: 100 },
-        { id:9, name:'Паймон', atk:5000000, cost:100000000, level:0, ability:'+5% к шансу двойных душ', maxLevel: 100 },
-        { id:10, name:'Фурина', atk:20000000, cost:500000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:11, name:'Ху Тао', atk:80000000, cost:2500000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:12, name:'Нилу', atk:350000000, cost:12000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:13, name:'Гань Юй', atk:1500000000, cost:60000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:14, name:'Аяка', atk:7000000000, cost:300000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:15, name:'Люмин', atk:30000000000, cost:1500000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:16, name:'Яэ Мико', atk:150000000000, cost:7500000000000, level:0, ability:'+5% к урону', maxLevel: 100 },
-        { id:17, name:'Райдэн', atk:800000000000, cost:40000000000000, level:0, ability:'+5% к урону', maxLevel: 100 }
+        { id:0, name:'Кли', atk:5, cost:20, level:0, maxLevel: 1000 },
+        { id:1, name:'Цици', atk:22, cost:150, level:0, maxLevel: 1000 },
+        { id:2, name:'Диона', atk:95, cost:800, level:0, maxLevel: 1000 },
+        { id:3, name:'Саю', atk:450, cost:4500, level:0, maxLevel: 1000 },
+        { id:4, name:'Нахида', atk:1800, cost:22000, level:0, maxLevel: 1000 },
+        { id:5, name:'Дори', atk:8500, cost:150000, level:0, maxLevel: 1000 },
+        { id:6, name:'Яояо', atk:42000, cost:900000, level:0, maxLevel: 1000 },
+        { id:7, name:'Сиджвин', atk:250000, cost:5000000, level:0, maxLevel: 1000 },
+        { id:8, name:'Качина', atk:1200000, cost:25000000, level:0, ability:'+10% к золоту', maxLevel: 1000 },
+        { id:9, name:'Паймон', atk:5000000, cost:100000000, level:0, ability:'+20% шанс x2 Душ', maxLevel: 1000 },
+        { id:10, name:'Фурина', atk:20000000, cost:500000000, level:0, ability:'+5% к урону', maxLevel: 1000 },
+        { id:11, name:'Ху Тао', atk:80000000, cost:2500000000, level:0, ability:'+5% к урону', maxLevel: 1000 },
+        { id:12, name:'Нилу', atk:350000000, cost:12000000000, level:0, ability:'+5% к урону', maxLevel: 1000 },
+        { id:13, name:'Гань Юй', atk:1500000000, cost:60000000000, level:0, ability:'+5% к урону', maxLevel: 1000 },
+        { id:14, name:'Аяка', atk:7000000000, cost:300000000000, level:0, ability:'+5% к урону', maxLevel: 1000 },
+        { id:15, name:'Люмин', atk:30000000000, cost:1500000000000, level:0, ability:'+5% к урону', maxLevel: 1000 },
+        { id:16, name:'Яэ Мико', atk:150000000000, cost:7500000000000, level:0, ability:'+5% к урону', maxLevel: 1000 },
+        { id:17, name:'Райдэн', atk:800000000000, cost:40000000000000, level:0, ability:'+5% к урону', maxLevel: 1000 }
     ],
     mainHero: { id: 0, name: 'Люмин', ability: 'Путешественница' },
     unlockedHeroes: [0],
@@ -127,20 +129,27 @@ const HEROES_DATA = [
 ];
 
 function getClickDmg(state: GameState, comboMult: number = 1): { dmg: number, isCrit: boolean } {
-    let dmg = (15 + Number(state.player.gear.sword) * 25) * (1 + Number(state.player.lvl) * 0.25);
+    let dmg = (15 + Number(state.player.gear.sword) * 30) * (1 + Number(state.player.lvl) * 0.25);
     dmg *= (1 + Number(state.glory) * 0.25);
     
     if (state.mainHero.id === 2) dmg *= 1.5;
+    
+    // Merc ability dmg boost (Furina, Hu Tao, etc.)
+    let mercDmgMult = 1;
+    state.mercs.forEach(m => {
+        if (m.level > 0 && m.id >= 10) mercDmgMult += 0.05;
+    });
+    dmg *= mercDmgMult;
     
     // Apply Combo Multiplier
     dmg *= comboMult;
     
     // Calculate critical hit
-    let critChance = 0.05 + Number(state.player.gear.armor) * 0.02; // Base 5% + 2% per armor level
-    if (state.arts[7]?.owned) critChance += 0.10; // Mirror of Illusions
+    let critChance = 0.08 + Number(state.player.gear.armor) * 0.02; // Base 8% + 2% per armor level
+    if (state.arts[7]?.owned) critChance += 0.10; 
 
-    let critMultiplier = 2 + Number(state.player.gear.armor) * 0.1; // Base 200% + 10% per armor level
-    if (state.mainHero.id === 1) critMultiplier += 0.2;
+    let critMultiplier = 2 + Number(state.player.gear.armor) * 0.15; // Base 200% + 15% per armor level
+    if (state.mainHero.id === 1) critMultiplier += 0.5;
     
     let isCrit = false;
     if (Math.random() < critChance) {
@@ -150,12 +159,12 @@ function getClickDmg(state: GameState, comboMult: number = 1): { dmg: number, is
 
     if (state.mainHero.id === 3) dmg *= 2;
     if(state.arts[1].owned) dmg *= 2;
-    if(state.arts[8]?.owned) dmg *= 3; // Heart of Titan
-    if(state.arts[12]?.owned) dmg *= 10; // Sword of Truth
+    if(state.arts[8]?.owned) dmg *= 3; 
+    if(state.arts[12]?.owned) dmg *= 10; 
     
     if (state.buffs.wrathUntil > Date.now()) {
         dmg *= 10;
-        isCrit = true; // Wrath hits always show as crits
+        isCrit = true; 
     }
     return { dmg: Math.floor(dmg), isCrit };
 }
@@ -163,13 +172,20 @@ function getClickDmg(state: GameState, comboMult: number = 1): { dmg: number, is
 function getStaticDps(state: GameState) {
     let dps = 0;
     state.mercs.forEach(m => dps += Number(m.atk) * Number(m.level));
-    dps *= (1 + Number(state.player.gear.ring) * 0.2); // Ring boosts DPS
-    // Prestige bonus increased to 25% per Glory
+    dps *= (1 + Number(state.player.gear.ring) * 0.25); // Ring boosts DPS 25%
     dps *= (1 + Number(state.glory) * 0.25);
+    
+    // Merc ability dmg boost
+    let mercDmgMult = 1;
+    state.mercs.forEach(m => {
+        if (m.level > 0 && m.id >= 10) mercDmgMult += 0.05;
+    });
+    dps *= mercDmgMult;
+    
     if(state.arts[3].owned) dps *= 2;
     if (state.mainHero.id === 3) dps *= 2;
-    if(state.arts[8]?.owned) dps *= 3; // Heart of Titan
-    if(state.arts[12]?.owned) dps *= 10; // Sword of Truth
+    if(state.arts[8]?.owned) dps *= 3; 
+    if(state.arts[12]?.owned) dps *= 10; 
     
     if (state.buffs.wrathUntil > Date.now()) dps *= 10;
     return Math.floor(dps);
@@ -178,18 +194,17 @@ function getStaticDps(state: GameState) {
 function spawnMonster(state: GameState): GameState {
     const stage = Math.floor(state.totalKills / 5) + 1;
     const isBoss = (state.subStage === 5);
-    // Base HP follows 1.45 growth which is more pleasant for idle games
-    let maxHp = Math.floor((isBoss ? 400 : 80) * Math.pow(1.45, stage));
+    // Adjusted scaling to 1.55 for better late game balance
+    let maxHp = Math.floor((isBoss ? 450 : 90) * Math.pow(1.55, stage));
     let bTime = 30;
     if (state.arts[2].owned) bTime += 5;
-    if (state.arts[11]?.owned) bTime += 10; // Immortal Essence
+    if (state.arts[11]?.owned) bTime += 10; 
     
     const stageForIcon = Math.floor(state.totalKills / 5);
     const exactName = isBoss 
         ? BOSS_NAMES[stageForIcon % BOSS_NAMES.length]
         : NORMAL_MONSTER_NAMES[state.totalKills % NORMAL_MONSTER_NAMES.length];
 
-    // Elite prefix for advanced stages > 1
     const displayName = (!isBoss && stageForIcon > 0) ? `Элитный ${exactName}` : exactName;
 
     return {
@@ -209,18 +224,28 @@ function applyDamage(state: GameState, amt: number, isClick: boolean): GameState
     
     if (newState.enemy.hp <= 0) {
         const stage = Math.floor(newState.totalKills / 5) + 1;
-        // Gold reward is tied to enemy HP/12 to keep it proportional
-        let rew = Math.floor(newState.enemy.max / 12);
+        // HP/10 Gold Scaling
+        let rew = Math.floor(newState.enemy.max / 10);
+        
+        // Merc ability (Kachina +10%)
+        if (newState.mercs[8].level > 0) rew *= 1.1;
+        
         if(newState.arts[0].owned) rew *= 2;
-        if(newState.arts[6]?.owned) rew *= 1.5; // Chalice of Abundance
+        if(newState.arts[6]?.owned) rew *= 1.5; 
         newState.gold += rew;
         
         newState.totalKills++;
         if(newState.isBoss) {
             newState.subStage = 1;
-            newState.crystals += 3; // Reduced boss crystal grant to balance Gacha
+            newState.crystals += 3;
             let soulGain = Math.floor(stage * 1.5);
-            if (newState.arts[5]?.owned) soulGain = Math.floor(soulGain * 1.25); // Harvest Seal
+            
+            // Paimon ability (20% chance x2 Souls)
+            if (newState.mercs[9].level > 0 && Math.random() < 0.2) {
+                soulGain *= 2;
+            }
+            
+            if (newState.arts[5]?.owned) soulGain = Math.floor(soulGain * 1.25); 
             newState.souls += soulGain;
         } else {
             newState.subStage++;
@@ -231,6 +256,9 @@ function applyDamage(state: GameState, amt: number, isClick: boolean): GameState
 }
 
 function format(n: number) {
+    if (!n || isNaN(n)) return '0';
+    if (n >= 1e21) return (n/1e21).toFixed(2) + 'Sx';
+    if (n >= 1e18) return (n/1e18).toFixed(2) + 'Qi';
     if (n >= 1e15) return (n/1e15).toFixed(2) + 'Q';
     if (n >= 1e12) return (n/1e12).toFixed(2) + 'T';
     if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
@@ -527,39 +555,17 @@ const GACHA_PRIZES = [
 ];
 
 export default function App() {
-    const handleGoogleSignIn = async () => {
-        try {
-            console.log("Starting Google Sign-In...");
-            await signInWithPopup(auth, googleProvider);
-            console.log("Google Sign-In successful");
-        } catch (error: any) {
-            console.error("Google auth fail:", error.code, error.message);
-            setAuthError(`Ошибка входа: ${error.message}`);
-        }
-    };
-    
     const [gameState, setGameState] = useState<GameState>(() => {
         try {
             const saved = localStorage.getItem('animeSoul_save');
             if (saved) {
                 let rawData = saved;
-                // Check if it's obfuscated (Base64) or plain JSON
                 if (!saved.startsWith('{')) {
                     try {
                         rawData = decodeURIComponent(atob(saved));
-                    } catch(e) { 
-                        rawData = saved;
-                    }
+                    } catch(e) { rawData = saved; }
                 }
-                
                 const parsed = JSON.parse(rawData); 
-                
-                if (parsed.username) {
-                    // We can't call setPlayerName here because it's a state initializer
-                    // But we can rely on a useEffect to sync it once the component mounts
-                }
-                
-                // Anti-Cheat: Validate values
                 if (parsed.gold < 0 || isNaN(parsed.gold)) parsed.gold = 0;
                 if (parsed.souls < 0 || isNaN(parsed.souls)) parsed.souls = 0;
                 
@@ -592,15 +598,54 @@ export default function App() {
                     })
                 };
             }
-        } catch (e) {
-            console.error("Load error", e);
-        }
+        } catch (e) { console.error("Load error", e); }
         return spawnMonster(INITIAL_STATE);
     });
 
-    // --- Save Game State ---
+    const [activeTab, setActiveTab] = useState('team');
+    const [tonConnectUI] = useTonConnectUI();
+    const [damagePopups, setDamagePopups] = useState<{id: number, val: number, x: number, y: number, isCrit: boolean}[]>([]);
+    const [lastActiveDps, setLastActiveDps] = useState(0);
+    const [gachaModal, setGachaModal] = useState<{show: boolean, spinning: boolean, prize: any, rotation: number, error?: string | null}>({show: false, spinning: false, prize: null, rotation: 0});
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [playerName, setPlayerName] = useState('Аноним');
+    const [leaderboard, setLeaderboard] = useState<any[]>([]);
+    const [userRank, setUserRank] = useState<number | null>(null);
+    const [isAuthReady, setIsAuthReady] = useState(false);
+    const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
+    const [authError, setAuthError] = useState<string | null>(null);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [newName, setNewName] = useState('');
+    const [flyingChest, setFlyingChest] = useState<{x: number, y: number, show: boolean, type: 'gold' | 'gems' | 'souls'}>({x: 0, y: 0, show: false, type: 'gold'});
+    
+    const playerNameRef = useRef(playerName);
+    const isQuotaExceededRef = useRef(false);
+    const comboRef = useRef(0);
+    const lastClickRef = useRef(Date.now());
+    const popupIdRef = useRef(0);
+    const activeDpsBufRef = useRef(0);
+    const gameStateRef = useRef(gameState);
+    const lastSyncTimeRef = useRef(0);
+    const lastSyncedStageRef = useRef(0);
+    const cloudSyncCooldownRef = useRef(0);
+
+    const handleGoogleSignIn = async () => {
+        try {
+            console.log("Starting Google Sign-In...");
+            await signInWithPopup(auth, googleProvider);
+            console.log("Google Sign-In successful");
+        } catch (error: any) {
+            console.error("Google auth fail:", error.code, error.message);
+            setAuthError(`Ошибка входа: ${error.message}`);
+        }
+    };
+
+    // --- Effects ---
+    useEffect(() => { playerNameRef.current = playerName; }, [playerName]);
+    useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+    // Local save is always immediate
     useEffect(() => {
-        // Local save is always immediate
         localStorage.setItem('animeSoul_save', JSON.stringify(gameState));
     }, [gameState]);
 
@@ -625,29 +670,12 @@ export default function App() {
         const timer = setTimeout(syncToCloud, 10000); // 10s delay before attempting cloud sync on change
         return () => clearTimeout(timer);
     }, [gameState, auth.currentUser]);
-    
-    const [activeTab, setActiveTab] = useState('team');
-    const [tonConnectUI] = useTonConnectUI();
-    const [damagePopups, setDamagePopups] = useState<{id: number, val: number, x: number, y: number, isCrit: boolean}[]>([]);
-    const [lastActiveDps, setLastActiveDps] = useState(0);
-    const [gachaModal, setGachaModal] = useState<{show: boolean, spinning: boolean, prize: any, rotation: number, error?: string | null}>({show: false, spinning: false, prize: null, rotation: 0});
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [playerName, setPlayerName] = useState('Аноним');
-    const playerNameRef = useRef(playerName);
-    useEffect(() => { playerNameRef.current = playerName; }, [playerName]);
-    const [leaderboard, setLeaderboard] = useState<any[]>([]);
-    const [userRank, setUserRank] = useState<number | null>(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
-    const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
-    const [authError, setAuthError] = useState<string | null>(null);
-    const isQuotaExceededRef = useRef(false);
-    
+
     useEffect(() => {
         const handleCustomError = (e: any) => {
             setAuthError(e.detail);
             if (e.detail?.includes('лимит') || e.detail?.includes('Quota') || isQuotaExceededGlobal) {
                 isQuotaExceededRef.current = true;
-                // Hard shutdown of Firestore networking to stop all console error spam
                 try {
                     disableNetwork(db);
                     console.log("Firestore network disabled due to quota exhaustion.");
@@ -667,17 +695,6 @@ export default function App() {
         }
     }, [authError]);
 
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [newName, setNewName] = useState('');
-    const [flyingChest, setFlyingChest] = useState<{x: number, y: number, show: boolean, type: 'gold' | 'gems' | 'souls'}>({x: 0, y: 0, show: false, type: 'gold'});
-    const comboRef = useRef(0);
-    const lastClickRef = useRef(Date.now());
-    const popupIdRef = useRef(0);
-    const activeDpsBufRef = useRef(0);
-    const gameStateRef = useRef(gameState);
-    const lastSyncTimeRef = useRef(0);
-    const lastSyncedStageRef = useRef(0);
-    const cloudSyncCooldownRef = useRef(0);
 
     useEffect(() => {
         // --- Telegram Mini App Initialization ---
@@ -929,16 +946,25 @@ export default function App() {
 
     const saveState = (state: GameState) => {
         try {
-            const json = JSON.stringify({ ...state, username: playerName });
+            const dataToSave = { ...state, lastSaveTime: Date.now(), username: playerNameRef.current };
+            const json = JSON.stringify(dataToSave);
             // Simple obfuscation to prevent casual localstorage editing
             const obfuscated = btoa(encodeURIComponent(json));
             localStorage.setItem('animeSoul_save', obfuscated);
             
             // Sync with Telegram CloudStorage disabled due to 512b data limit (DATA_TOO_LONG errors)
         } catch (e) {
-            console.error("Save error");
+            console.error("Save error", e);
         }
     };
+
+    useEffect(() => {
+        // Periodic background save
+        const saveInterval = setInterval(() => {
+            saveState(gameStateRef.current);
+        }, 10000);
+        return () => clearInterval(saveInterval);
+    }, []);
 
     useEffect(() => {
         const saved = localStorage.getItem('animeSoul_save');
@@ -947,14 +973,33 @@ export default function App() {
                 const rawData = decodeURIComponent(atob(saved));
                 const parsed = JSON.parse(rawData);
                 if (parsed.username) setPlayerName(parsed.username);
+                
+                // Offline progress calculation
+                if (parsed.lastSaveTime > 0) {
+                    const diff = (Date.now() - parsed.lastSaveTime) / 1000;
+                    if (diff > 60) {
+                        const dps = getStaticDps(parsed);
+                        if (dps > 0) {
+                            const offlineGold = Math.floor(dps * diff * 0.15); // 15% offline efficiency
+                            if (offlineGold > 0) {
+                                setGameState(prev => ({ ...prev, gold: prev.gold + offlineGold }));
+                                setTimeout(() => {
+                                    const tg = (window as any).Telegram?.WebApp;
+                                    tg?.showAlert?.(`С возвращением! Ваши наемники добыли ${format(offlineGold)} золота за ${Math.floor(diff/60)} мин. отсутствия.`);
+                                }, 1500);
+                            }
+                        }
+                    }
+                }
             } catch (e) {}
         }
     }, []);
 
     useEffect(() => {
         gameStateRef.current = gameState;
-        saveState(gameState);
-    }, [gameState, playerName]);
+        // Immediate local save on important changes
+        localStorage.setItem('animeSoul_save', JSON.stringify({ ...gameState, lastSaveTime: Date.now() }));
+    }, [gameState]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -1123,7 +1168,7 @@ export default function App() {
         setGameState(prev => {
             if (prev.player.lvl >= 100) return prev;
             const currentLvl = Number(prev.player.lvl) || 1;
-            const cost = Math.floor(100 * Math.pow(1.2, currentLvl));
+            const cost = Math.floor(100 * Math.pow(1.15, currentLvl));
             if (prev.gold >= cost) {
                 return { ...prev, gold: prev.gold - cost, player: { ...prev.player, lvl: currentLvl + 1 } };
             }
@@ -1134,9 +1179,8 @@ export default function App() {
     const upGear = (g: 'sword' | 'armor' | 'ring') => {
         setGameState(prev => {
             if (prev.player.gear[g] >= 100) return prev;
-            const baseCost = g === 'sword' ? 150 : g === 'armor' ? 600 : 1500;
-            // Slightly reduced multipliers for more frequent upgrades (1.6, 1.7, 1.8 instead of 1.8, 1.9, 2.0)
-            const multiplier = g === 'sword' ? 1.6 : g === 'armor' ? 1.7 : 1.8;
+            const baseCost = g === 'sword' ? 100 : g === 'armor' ? 500 : 1000;
+            const multiplier = g === 'sword' ? 1.5 : g === 'armor' ? 1.6 : 1.7;
             const currentLvl = Number(prev.player.gear[g]) || 0;
             const cost = Math.floor(baseCost * Math.pow(multiplier, currentLvl));
             if (prev.gold >= cost) {
@@ -1387,10 +1431,10 @@ export default function App() {
                     </div>
                 );
             case 'hero':
-                const hCost = gameState.player.lvl * 100;
-                const sCost = Math.floor(100 * Math.pow(1.7, gameState.player.gear.sword));
-                const aCost = Math.floor(500 * Math.pow(1.8, gameState.player.gear.armor));
-                const rCost = Math.floor(1000 * Math.pow(1.9, gameState.player.gear.ring));
+                const hCost = Math.floor(100 * Math.pow(1.15, gameState.player.lvl));
+                const sCost = Math.floor(100 * Math.pow(1.5, gameState.player.gear.sword));
+                const aCost = Math.floor(500 * Math.pow(1.6, gameState.player.gear.armor));
+                const rCost = Math.floor(1000 * Math.pow(1.7, gameState.player.gear.ring));
                 return (
                     <div className="flex flex-col gap-3">
                         <div className="aaa-glass p-3 rounded-3xl flex flex-col gap-2 relative overflow-hidden">
@@ -1889,28 +1933,50 @@ export default function App() {
 
                 <div className="flex-1 flex flex-col items-center justify-center relative z-10 min-h-[300px]">
                     <div className="absolute top-2 lg:top-4 flex flex-col items-center w-full px-2 lg:px-0">
+                        <div className="flex items-center gap-2 mb-2 lg:mb-4 bg-black/60 px-4 py-1 rounded-full border border-white/5 backdrop-blur-md">
+                            {[1, 2, 3, 4, 5].map((s) => (
+                                <div 
+                                    key={s} 
+                                    className={`w-2 h-2 lg:w-3 lg:h-3 rounded-full transition-all duration-300 border ${
+                                        gameState.subStage === s 
+                                        ? 'bg-red-500 border-red-400 scale-125 shadow-[0_0_10px_rgba(239,68,68,0.8)]' 
+                                        : gameState.subStage > s 
+                                        ? 'bg-red-900 border-red-800' 
+                                        : 'bg-zinc-800 border-zinc-700'
+                                    }`}
+                                />
+                            ))}
+                            <div className="ml-2 text-[10px] font-black text-white italic uppercase tracking-widest">{gameState.isBoss ? 'BOSS' : `WAVE ${gameState.subStage}/5`}</div>
+                        </div>
+
                         <div className="w-full max-w-[600px] h-6 lg:h-10 aaa-glass aaa-hp-bar overflow-hidden relative border-red-600/50 mb-2 lg:mb-4 transition-all duration-300">
                             <motion.div 
-                                className="h-full bg-gradient-to-r from-red-600 via-red-500 to-red-400"
+                                className={`h-full bg-gradient-to-r ${gameState.isBoss ? 'from-red-600 via-orange-500 to-red-400' : 'from-red-600 via-red-500 to-red-400'}`}
                                 initial={false}
                                 animate={{ width: `${Math.max(0, (gameState.enemy.hp / gameState.enemy.max) * 100)}%` }}
                                 transition={{ type: "spring", stiffness: 100, damping: 20 }}
                             />
-                            <div className="absolute inset-0 flex items-center justify-center text-sm lg:text-xl font-display text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)] italic">
+                            <div className="absolute inset-0 flex items-center justify-center text-sm lg:text-xl font-display text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)] italic tracking-tighter">
                                 {format(gameState.enemy.hp)} / {format(gameState.enemy.max)}
+                                {gameState.isBoss && <span className="ml-4 text-orange-400">🔥</span>}
                             </div>
                         </div>
+
+                        {gameState.isBoss && (
+                            <motion.div 
+                                initial={{ scale: 0.8 }}
+                                animate={{ scale: 1 }}
+                                className="bg-red-900/80 border-2 border-red-500 px-4 py-1 rounded-full text-white font-display text-xl shadow-[0_0_20px_#ef4444] backdrop-blur-md mb-2"
+                            >
+                                <span className={gameState.bossTime <= 5 ? 'animate-pulse text-yellow-400' : ''}>
+                                    {Math.floor(gameState.bossTime)}s
+                                </span>
+                            </motion.div>
+                        )}
 
                         <h3 className="text-xl lg:text-3xl font-display text-white mb-1 lg:mb-2 italic tracking-widest bg-gradient-to-r from-red-900/60 via-red-950/80 to-transparent pr-4 lg:pr-8 pl-4 lg:pl-6 py-1 lg:py-2 border-l-2 lg:border-l-4 border-red-600 shadow-xl text-center self-center drop-shadow-md">
                             {gameState.enemy.name}
                         </h3>
-                        
-                        {gameState.isBoss && (
-                            <div className="text-lg lg:text-2xl font-display text-red-500 animate-pulse mt-1 lg:mt-2 flex items-center gap-2 lg:gap-3">
-                                <span className="bg-red-600 text-white px-2 lg:px-3 text-sm lg:text-lg not-italic">BOSS</span>
-                                {gameState.bossTime}s
-                            </div>
-                        )}
                     </div>
 
                     <div className="flex items-center justify-between lg:justify-center mt-12 md:mt-20 lg:mt-24 w-full px-2 lg:px-0 min-h-[180px] lg:min-h-[340px]">
