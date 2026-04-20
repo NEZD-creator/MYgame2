@@ -625,6 +625,13 @@ export default function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
+    useEffect(() => {
+        if (authError) {
+            const timer = setTimeout(() => setAuthError(null), 8000);
+            return () => clearTimeout(timer);
+        }
+    }, [authError]);
+
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [newName, setNewName] = useState('');
     const [flyingChest, setFlyingChest] = useState<{x: number, y: number, show: boolean, type: 'gold' | 'gems' | 'souls'}>({x: 0, y: 0, show: false, type: 'gold'});
@@ -1595,8 +1602,11 @@ export default function App() {
                 return (
                     <div className="flex flex-col gap-3">
                         {authError && (
-                            <div className="bg-red-900/40 border border-red-500 p-2 rounded-xl text-[10px] text-red-200 text-center font-bold animate-pulse">
-                                ⚠️ {authError}
+                            <div className="bg-red-900/40 border border-red-500 p-2 rounded-xl text-[10px] text-red-200 flex items-center justify-between font-bold">
+                                <span className="flex-1 text-center">⚠️ {authError}</span>
+                                <button onClick={() => setAuthError(null)} className="ml-2 text-red-400 hover:text-white">
+                                    <X size={12} />
+                                </button>
                             </div>
                         )}
                         <div className="aaa-glass p-4 rounded-3xl flex flex-col gap-4 relative overflow-hidden">
