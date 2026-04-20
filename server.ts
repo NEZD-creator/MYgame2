@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,13 +11,12 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Set headers for maximum compatibility (Allow framing everywhere)
+  // Set headers for maximum compatibility
   app.use((req, res, next) => {
-    // Completely disable framing restrictions for maximum ease of use in Telegram
     res.setHeader('Content-Security-Policy', "frame-ancestors *;");
     res.removeHeader('X-Frame-Options');
     
-    // Explicitly allow origin based on request for better security
+    // Explicitly allow origin for our main app domain
     const origin = req.headers.origin || '*';
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
@@ -30,6 +30,13 @@ async function startServer() {
     
     next();
   });
+
+  // Proxy requests to tonconnect bridges to bypass CORS
+  app.use('/bridge', createProxyMiddleware({
+    target: 'https://bridge.tonapi.io', // Основной мост, который работает стабильно
+    changeOrigin: true,
+    pathRewrite: { '^/bridge': '/bridge' },
+  }));
 
   app.get('/tonconnect-manifest.json', (req, res) => {
     // Determine the host based on the request
