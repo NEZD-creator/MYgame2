@@ -35,7 +35,7 @@ import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, Ar
 import { useTonConnectUI } from '@tonconnect/ui-react';
 
 import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider, isQuotaExceededGlobal } from './firebase';
-import { disableNetwork } from 'firebase/firestore';
+import { disableNetwork, getDocs } from 'firebase/firestore';
 
 type GameState = {
     gold: number;
@@ -615,6 +615,69 @@ export default function App() {
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isCleaning, setIsCleaning] = useState(false);
+    const isAdmin = auth.currentUser?.email === 'nevmovenko2004@gmail.com';
+
+    const globalLeaderboardCleanup = async () => {
+        if (!isAdmin || isCleaning || isQuotaExceededGlobal) return;
+        
+        setIsCleaning(true);
+        const tg = (window as any).Telegram?.WebApp;
+        
+        try {
+            console.log("Admin Global Cleanup starting...");
+            const snapshot = await getDocs(collection(db, 'leaderboard'));
+            const uniqueUsers = new Map();
+            const toDelete: string[] = [];
+
+            snapshot.docs.forEach(docSnap => {
+                const data = docSnap.data();
+                const id = docSnap.id;
+                
+                // Identify the human behind the entry
+                const key = data.tgId ? `tg_${data.tgId}` : (data.googleUid || data.uid || (data.username || '').toLowerCase().trim());
+                
+                // Logic check: "Impossible" or "Broken" values
+                // Current max stage is likely way below 1000 for honest players
+                const isImpossible = data.stage > 1200 || data.powerScore > 1e18; 
+                const name = (data.username || '').toLowerCase();
+                const isTest = name.includes('test') || name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
+
+                if (isImpossible || isTest || !key) {
+                    toDelete.push(id);
+                    return;
+                }
+
+                if (!uniqueUsers.has(key)) {
+                    uniqueUsers.set(key, { id, powerScore: data.powerScore || 0 });
+                } else {
+                    const existing = uniqueUsers.get(key);
+                    if ((data.powerScore || 0) > existing.powerScore) {
+                        toDelete.push(existing.id);
+                        uniqueUsers.set(key, { id, powerScore: data.powerScore || 0 });
+                    } else {
+                        toDelete.push(id);
+                    }
+                }
+            });
+
+            console.log(`Global Cleanup: Identified ${toDelete.length} entries for removal.`);
+            
+            for (let i = 0; i < toDelete.length; i++) {
+                // Delete in small batches if needed, but here we just go through them
+                await deleteDoc(doc(db, 'leaderboard', toDelete[i])).catch(err => {
+                    console.error(`Failed to delete ${toDelete[i]}`, err);
+                });
+            }
+            
+            tg?.showAlert?.(`Глобальная очистка завершена! Удалено ${toDelete.length} дубликатов/мусора.`);
+        } catch (err) {
+            console.error("Global cleanup failed", err);
+            tg?.showAlert?.("Ошибка при глобальной очистке.");
+        } finally {
+            setIsCleaning(false);
+        }
+    };
     const [newName, setNewName] = useState('');
     const [flyingChest, setFlyingChest] = useState<{x: number, y: number, show: boolean, type: 'gold' | 'gems' | 'souls'}>({x: 0, y: 0, show: false, type: 'gold'});
     
@@ -2095,6 +2158,23 @@ export default function App() {
                                                 ? 'Аккаунт привязан' 
                                                 : 'Привязать Google Аккаунт'}
                                     </button>
+
+                                    {isAdmin && (
+                                        <div className="flex flex-col gap-2 mt-4 p-4 border-2 border-red-500/50 rounded-3xl bg-red-950/20">
+                                            <div className="text-[10px] font-black text-red-500 uppercase text-center mb-1">Admin Panel</div>
+                                            <button 
+                                                onClick={globalLeaderboardCleanup}
+                                                disabled={isCleaning}
+                                                className={`w-full py-3 rounded-2xl font-black text-xs uppercase transition-all ${
+                                                    isCleaning 
+                                                    ? 'bg-zinc-800 text-zinc-500 animate-pulse' 
+                                                    : 'bg-red-600 text-white hover:bg-red-500 shadow-[0_0_15px_rgba(220,38,38,0.4)]'
+                                                }`}
+                                            >
+                                                {isCleaning ? 'Cleaning...' : 'Deep Cleanup Leaderboard'}
+                                            </button>
+                                        </div>
+                                    )}
 
                                     {auth.currentUser ? (
                                         <div className="flex items-center gap-2 text-green-500 font-bold text-xs mt-2 justify-center">
