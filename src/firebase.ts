@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { getFirestore, collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, getDocFromServer, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, getDocFromServer, deleteDoc, disableNetwork } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -9,9 +9,23 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
 
 // Test connection and error handling
+export let isQuotaExceededGlobal = false;
+
 export const handleFirestoreError = (error: any, operation: string, path: string | null) => {
     const isQuotaError = error.message?.includes('resource-exhausted') || error.message?.includes('Quota exceeded');
     
+    if (isQuotaError) {
+        if (!isQuotaExceededGlobal) {
+            isQuotaExceededGlobal = true;
+            try {
+                disableNetwork(db);
+                console.log("Global Firestore network shutdown triggered by quota exhaustion.");
+            } catch(e) {
+                console.error("Critical: Could not disable network", e);
+            }
+        }
+    }
+
     const errInfo = {
         error: isQuotaError ? "Дневной лимит базы данных исчерпан. Пожалуйста, попробуйте завтра." : (error.message || String(error)),
         operation,

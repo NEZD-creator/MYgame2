@@ -34,7 +34,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 
-import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider } from './firebase';
+import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider, isQuotaExceededGlobal } from './firebase';
+import { disableNetwork } from 'firebase/firestore';
 
 type GameState = {
     gold: number;
@@ -605,7 +606,7 @@ export default function App() {
 
     // Cloud Sync Throttled (Firestore Quota Protection)
     useEffect(() => {
-        if (!auth.currentUser || auth.currentUser.isAnonymous || isQuotaExceededRef.current) return;
+        if (!auth.currentUser || auth.currentUser.isAnonymous || isQuotaExceededRef.current || isQuotaExceededGlobal) return;
 
         const syncToCloud = async () => {
             const now = Date.now();
@@ -644,8 +645,15 @@ export default function App() {
     useEffect(() => {
         const handleCustomError = (e: any) => {
             setAuthError(e.detail);
-            if (e.detail?.includes('лимит') || e.detail?.includes('Quota')) {
+            if (e.detail?.includes('лимит') || e.detail?.includes('Quota') || isQuotaExceededGlobal) {
                 isQuotaExceededRef.current = true;
+                // Hard shutdown of Firestore networking to stop all console error spam
+                try {
+                    disableNetwork(db);
+                    console.log("Firestore network disabled due to quota exhaustion.");
+                } catch(err) {
+                    console.error("Failed to disable network", err);
+                }
             }
         };
         window.addEventListener('auth-error-trigger', handleCustomError);
@@ -706,6 +714,7 @@ export default function App() {
                 
                 // --- NEW SYNC LOGIC: Migrate localStorage to Firebase ---
                 const migrateSave = async () => {
+                    if (isQuotaExceededRef.current || isQuotaExceededGlobal) return;
                     const saved = localStorage.getItem('animeSoul_save');
                     if (saved) {
                         try {
@@ -718,7 +727,7 @@ export default function App() {
                                 console.log("Save migrated to Firebase");
                             }
                         } catch (e) {
-                            console.error("Migration failed", e);
+                            handleFirestoreError(e, 'WRITE', 'migration');
                         }
                     }
                 };
@@ -836,7 +845,10 @@ export default function App() {
                         myEntries.sort((a: any, b: any) => b.powerScore - a.powerScore);
                         // Delete all except the best one
                         for (let i = 1; i < myEntries.length; i++) {
-                            deleteDoc(doc(db, 'leaderboard', myEntries[i].id)).catch(console.error);
+                            if (!isQuotaExceededRef.current && !isQuotaExceededGlobal) {
+                                deleteDoc(doc(db, 'leaderboard', myEntries[i].id))
+                                    .catch(err => handleFirestoreError(err, 'DELETE', 'leaderboard/' + myEntries[i].id));
+                            }
                         }
                     }
                 }
@@ -884,7 +896,7 @@ export default function App() {
         const lowerName = playerName.toLowerCase();
         const isAI = lowerName.includes('gemini') || lowerName.includes('ais agent') || lowerName.includes('ais_agent');
 
-        if (shouldSync && !isAI && !isQuotaExceededRef.current) {
+        if (shouldSync && !isAI && !isQuotaExceededRef.current && !isQuotaExceededGlobal) {
             const tgInitData = (window as any).Telegram?.WebApp?.initDataUnsafe;
             const telegramUserId = tgInitData?.user?.id?.toString();
             // Use Telegram ID if available, otherwise fallback to Firebase anonymous UID.
