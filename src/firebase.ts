@@ -1,11 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { getFirestore, collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, getDocFromServer, deleteDoc } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const googleProvider = new GoogleAuthProvider();
 
 // Test connection and error handling
 export const handleFirestoreError = (error: any, operation: string, path: string | null) => {
@@ -34,6 +35,7 @@ testConnection();
 
 export { 
     signInAnonymously, 
+    signInWithPopup,
     onAuthStateChanged, 
     collection, 
     query, 

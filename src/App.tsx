@@ -34,7 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 
-import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError } from './firebase';
+import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider } from './firebase';
 
 type GameState = {
     gold: number;
@@ -526,6 +526,14 @@ const GACHA_PRIZES = [
 ];
 
 export default function App() {
+    const handleGoogleSignIn = async () => {
+        try {
+            await signInWithPopup(auth, googleProvider);
+        } catch (error) {
+            console.error("Google auth fail", error);
+            setAuthError("Ошибка входа через Google");
+        }
+    };
     const [gameState, setGameState] = useState<GameState>(() => {
         try {
             const saved = localStorage.getItem('animeSoul_save');
@@ -1937,6 +1945,9 @@ export default function App() {
                                             </button>
                                         </div>
                                     </div>
+                                    <button onClick={handleGoogleSignIn} className="bg-blue-600 text-white p-2 rounded w-full mt-2 font-black uppercase text-xs">
+                                        Привязать Google Аккаунт
+                                    </button>
 
                                     <div className="aaa-glass p-4 rounded-3xl border-zinc-800/50 flex flex-col gap-2">
                                         <div className="text-xs font-black text-zinc-400 uppercase mb-1 flex items-center gap-2">
