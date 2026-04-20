@@ -34,7 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 
-import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider } from './firebase';
+import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError, signInWithRedirect, googleProvider, getRedirectResult } from './firebase';
 
 type GameState = {
     gold: number;
@@ -528,12 +528,17 @@ const GACHA_PRIZES = [
 export default function App() {
     const handleGoogleSignIn = async () => {
         try {
-            await signInWithPopup(auth, googleProvider);
+            await signInWithRedirect(auth, googleProvider);
         } catch (error) {
             console.error("Google auth fail", error);
             setAuthError("Ошибка входа через Google");
         }
     };
+    
+    // Add getRedirectResult on mount
+    useEffect(() => {
+        getRedirectResult(auth).catch(console.error);
+    }, []);
     const [gameState, setGameState] = useState<GameState>(() => {
         try {
             const saved = localStorage.getItem('animeSoul_save');

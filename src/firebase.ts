@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { getFirestore, collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, getDocFromServer, deleteDoc } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -35,7 +35,8 @@ testConnection();
 
 export { 
     signInAnonymously, 
-    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     onAuthStateChanged, 
     collection, 
     query, 
