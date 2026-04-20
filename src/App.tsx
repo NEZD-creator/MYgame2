@@ -738,17 +738,34 @@ export default function App() {
         };
         initAuth();
 
-        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
             setIsAuthReady(true);
             if (user) {
                 setAuthError(null);
-                // If the user's name is still 'Аноним', try to give them a guest ID if no TG name was found
                 setPlayerName(prev => {
-                    if (prev === 'Аноним') {
-                        return generateGuestName(user.uid);
-                    }
+                    if (prev === 'Аноним') return generateGuestName(user.uid);
                     return prev;
                 });
+
+                // --- Load from Cloud ---
+                try {
+                    const { getDoc } = await import('firebase/firestore');
+                    const userDoc = await getDoc(doc(db, 'users', user.uid));
+                    if (userDoc.exists()) {
+                        const cloudData = userDoc.data();
+                        // Only load if it has essential game data
+                        if (cloudData.gold !== undefined) {
+                            console.log("Cloud save found, merging...");
+                            setGameState(prev => ({
+                                ...prev,
+                                ...cloudData,
+                                updatedAt: undefined // don't store the server side timestamp object in local state
+                            }));
+                        }
+                    }
+                } catch (err) {
+                    console.error("Cloud load error:", err);
+                }
             }
         });
 

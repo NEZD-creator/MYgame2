@@ -1,31 +1,34 @@
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    // Collection: leaderboard
-    // Document ID: {uid}
-    // Fields:
-    //   - uid: string (required) - ID matching the document key
-    //   - username: string (required, max 32 chars) - Player name
-    //   - stage: number (required, >= 1) - Stage level
-    //   - subStage: number (required, 1-5) - Sub-stage
-    //   - dps: number (required, >= 0) - Damage per second
-    //   - glory: number (required, >= 0) - Glory points
-    //   - lastUpdated: timestamp (required) - Update time
-    // ===============================================================
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
-    function isAuthenticated() {
+    // Reuseable helpers
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(uid, data) {
-      // Allow if Firebase UID matches, OR if tgId in data matches the document ID
-      // This allows Telegram users to update their own leaderboard entry regardless of the ephemeral Firebase Auth UID
-      // Warning: in a real production environment, use Firebase Custom Tokens for true authentication.
-      return isAuthenticated() && (request.auth.uid == uid || (data.keys().hasAll(['tgId']) && uid == data.tgId));
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Rules for User Sync Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create, update: if isOwner(userId) && 
+        isValidId(userId) &&
+        request.resource.data.gold is number &&
+        request.resource.data.updatedAt == request.time;
+      allow delete: if false; // Progress cannot be deleted easily
+    }
+
+    // Rules for Leaderboard
     function isValidLeaderboardEntry(data) {
       return data.keys().hasAll(['username', 'stage', 'subStage', 'dps', 'glory', 'lastUpdated']) &&
              data.username is string && data.username.size() >= 1 && data.username.size() <= 64 &&
@@ -33,13 +36,15 @@ service cloud.firestore {
              data.subStage is number &&
              data.dps is number &&
              data.glory is number &&
-             data.lastUpdated is timestamp;
+             data.lastUpdated == request.time;
     }
 
     match /leaderboard/{uid} {
       allow read: if true;
-      allow create, update: if isOwner(uid, request.resource.data) && isValidLeaderboardEntry(request.resource.data);
-      allow delete: if true;
+      allow create, update: if isSignedIn() && (request.auth.uid == uid || (request.resource.data.keys().hasAll(['tgId']) && uid == request.resource.data.tgId)) && 
+        isValidId(uid) && 
+        isValidLeaderboardEntry(request.resource.data);
+      allow delete: if false;
     }
   }
 }

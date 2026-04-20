@@ -14,12 +14,29 @@
         "lastUpdated": { "type": "string", "format": "date-time", "description": "Timestamp of the last update" }
       },
       "required": ["uid", "username", "stage", "subStage", "dps", "glory", "lastUpdated"]
+    },
+    "UserSync": {
+      "title": "User Sync Data",
+      "description": "Stored game state for a user",
+      "type": "object",
+      "properties": {
+        "gold": { "type": "number" },
+        "souls": { "type": "number" },
+        "crystals": { "type": "number" },
+        "glory": { "type": "number" },
+        "totalKills": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
     "/leaderboard/{uid}": {
       "schema": "LeaderboardEntry",
       "description": "Global leaderboard collection"
+    },
+    "/users/{userId}": {
+      "schema": "UserSync",
+      "description": "User specific game progress sync"
     }
   }
 }
