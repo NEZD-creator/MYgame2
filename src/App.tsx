@@ -183,12 +183,13 @@ function spawnMonster(state: GameState): GameState {
     if (state.arts[2].owned) bTime += 5;
     if (state.arts[11]?.owned) bTime += 10; // Immortal Essence
     
-    const prefixes = ['Теневой', 'Кровавый', 'Пустотный', 'Адский', 'Древний', 'Хаотичный', 'Призрачный', 'Темный', 'Алый', 'Механический'];
-    const names = ['Слайм', 'Бестия', 'Демон', 'Дракон', 'Голем', 'Призрак', 'Странник', 'Охотник', 'Разрушитель', 'Скелет'];
-    const bossNames = ['Повелитель Тьмы', 'Кровавый Император', 'Пожиратель Миров', 'Бог Войны', 'Великий Дракон'];
-    
-    const randomName = prefixes[Math.floor(Math.random() * prefixes.length)] + ' ' + names[Math.floor(Math.random() * names.length)];
-    const randomBoss = bossNames[Math.floor(Math.random() * bossNames.length)];
+    const stageForIcon = Math.floor(state.totalKills / 5);
+    const exactName = isBoss 
+        ? BOSS_NAMES[stageForIcon % BOSS_NAMES.length]
+        : NORMAL_MONSTER_NAMES[state.totalKills % NORMAL_MONSTER_NAMES.length];
+
+    // Elite prefix for advanced stages > 1
+    const displayName = (!isBoss && stageForIcon > 0) ? `Элитный ${exactName}` : exactName;
 
     return {
         ...state,
@@ -197,7 +198,7 @@ function spawnMonster(state: GameState): GameState {
         enemy: {
             hp: maxHp,
             max: maxHp,
-            name: isBoss ? randomBoss : randomName
+            name: `${displayName} (Lv.${stage * (isBoss ? 10 : 1)})`
         }
     };
 }
@@ -351,6 +352,27 @@ const NORMAL_MONSTERS = [
     'Enemy_Ruin_Hunter_Icon.png'
 ];
 
+const BOSS_NAMES = [
+    'Двалин (Ужас Бури)',
+    'Волчий Лорд (Андриус)',
+    'Тарталья (Чайльд)',
+    'Синьора',
+    'Сёгун Райдэн'
+];
+
+const NORMAL_MONSTER_NAMES = [
+    'Пиро Слайм',
+    'Гидро Слайм',
+    'Анемо Слайм',
+    'Электро Слайм',
+    'Хиличурл',
+    'Хиличурл со щитом',
+    'Гидро Шамачурл',
+    'Пиро Маг Бездны',
+    'Страж Руин',
+    'Руинный Охотник'
+];
+
 const HERO_ICONS = [
     'UI_AvatarIcon_Lumine', // Warrior
     'UI_AvatarIcon_Hutao',  // Assassin
@@ -462,6 +484,10 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
                 <div className="absolute inset-0 bg-red-500/20 blur-[50px] rounded-full pointer-events-none animate-pulse"></div>
             )}
             
+            {/* Ground shadow to prevent floating appearance */}
+            <div className="absolute bottom-[5%] lg:bottom-[10%] w-[60%] lg:w-[80%] h-[15%] bg-black/60 rounded-[100%] blur-md z-0 transition-all"></div>
+            {isBoss && <div className="absolute bottom-[2%] lg:bottom-[5%] w-[80%] lg:w-[120%] h-[30%] bg-red-900/40 rounded-[100%] blur-xl z-0 transition-all animate-pulse"></div>}
+            
             <AnimatePresence mode="popLayout">
                 <motion.div
                     key={iconName + kills}
@@ -474,13 +500,13 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
                     <motion.div
                         animate={{ y: [0, isBoss ? -15 : -8, 0], scale: isBoss ? [1, 1.05, 1] : 1 }}
                         transition={{ duration: isBoss ? 2 : 3, repeat: Infinity, ease: "easeInOut" }}
-                        className={`relative flex items-center justify-center ${isBoss ? 'w-[120%] h-[120%] lg:w-[150%] lg:h-[150%]' : 'w-[80%] h-[80%] lg:w-[100%] lg:h-[100%]'}`}
+                        className={`relative z-10 flex items-center justify-center ${isBoss ? 'w-[120%] h-[120%] lg:w-[150%] lg:h-[150%]' : 'w-[80%] h-[80%] lg:w-[100%] lg:h-[100%]'}`}
                     >
                         <img 
                             src={`https://genshin-impact.fandom.com/wiki/Special:FilePath/${iconName}`}
                             alt={name}
                             onError={handleImageError('https://genshin-impact.fandom.com/wiki/Special:FilePath/Enemy_Pyro_Slime_Icon.png')}
-                            className={`w-full h-full object-contain filter drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] ${isBoss ? 'brightness-110 drop-shadow-[0_0_30px_rgba(239,68,68,0.6)]' : ''}`}
+                            className={`w-full h-full object-contain filter drop-shadow-[0_20px_20px_rgba(0,0,0,0.8)] ${isBoss ? 'brightness-110 drop-shadow-[0_0_40px_rgba(239,68,68,0.8)]' : ''}`}
                             referrerPolicy="no-referrer"
                         />
                     </motion.div>
@@ -1754,7 +1780,7 @@ export default function App() {
                             </div>
                         </div>
 
-                        <h3 className="text-xl lg:text-3xl font-display text-white mb-1 lg:mb-2 italic tracking-widest bg-black/60 px-4 lg:px-6 py-1 lg:py-2 border-l-2 lg:border-l-4 border-red-600 shadow-xl text-center">
+                        <h3 className="text-xl lg:text-3xl font-display text-white mb-1 lg:mb-2 italic tracking-widest bg-gradient-to-r from-red-900/60 via-red-950/80 to-transparent pr-4 lg:pr-8 pl-4 lg:pl-6 py-1 lg:py-2 border-l-2 lg:border-l-4 border-red-600 shadow-xl text-center self-center drop-shadow-md">
                             {gameState.enemy.name}
                         </h3>
                         
