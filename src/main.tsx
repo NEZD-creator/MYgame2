@@ -4,7 +4,8 @@ import { TonConnectUIProvider } from '@tonconnect/ui-react';
 import App from './App.tsx';
 import './index.css';
 
-const manifestUrl = new URL('tonconnect-manifest.json', window.location.href).toString();
+// Используем абсолютный путь к корню, чтобы избежать проблем с подпапками (например, на GitHub Pages)
+const manifestUrl = window.location.origin + '/tonconnect-manifest.json';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
