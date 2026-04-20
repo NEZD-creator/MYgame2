@@ -18,16 +18,27 @@ async function startServer() {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    
+    if (req.method === 'OPTIONS') {
+      res.status(200).end();
+      return;
+    }
+    
     next();
   });
 
   app.get('/tonconnect-manifest.json', (req, res) => {
+    // Determine the host based on the request
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const fullUrl = `${protocol}://${host}`;
+    
     res.json({
-      url: `https://${req.get('host')}`,
+      url: fullUrl,
       name: "Isekai Quest",
-      iconUrl: "https://picsum.photos/seed/anime_isekai_ton/256/256",
-      termsOfServiceUrl: `https://${req.get('host')}/terms`,
-      privacyPolicyUrl: `https://${req.get('host')}/privacy`
+      iconUrl: "https://ton-connect.github.io/demo-dapp/apple-touch-icon.png",
+      termsOfServiceUrl: `${fullUrl}/terms`,
+      privacyPolicyUrl: `${fullUrl}/privacy`
     });
   });
 
