@@ -42,6 +42,9 @@ async function startServer() {
     });
   });
 
+  app.get('/terms', (req, res) => res.send('<h1>Terms of Service</h1><p>Welcome to Isekai Quest!</p>'));
+  app.get('/privacy', (req, res) => res.send('<h1>Privacy Policy</h1><p>Your privacy is important to us.</p>'));
+
   if (process.env.NODE_ENV === 'production') {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

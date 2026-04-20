@@ -1483,16 +1483,16 @@ export default function App() {
                             <div className="font-black text-xl text-yellow-500 mb-2 uppercase tracking-widest drop-shadow-sm z-10">Gacha</div>
                             <button 
                                 onClick={rollGacha}
-                                disabled={gameState.crystals < 50 || gachaModal.show}
+                                disabled={gameState.crystals < 100 || gachaModal.show}
                                 className={`aaa-btn w-full py-3 px-4 rounded-xl font-bold text-sm uppercase z-10 ${
-                                    gameState.crystals >= 50 && !gachaModal.show
+                                    gameState.crystals >= 100 && !gachaModal.show
                                     ? 'bg-gradient-to-r from-red-600 to-red-800 text-white border-red-500/50' 
                                     : 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed border-transparent'
                                 }`}
                             >
                                 <span className="flex justify-between items-center">
                                     <span>{gachaModal.spinning ? 'Rolling...' : 'Roll'}</span>
-                                    <span className="flex items-center gap-1"><Gem size={16}/> 50</span>
+                                    <span className="flex items-center gap-1"><Gem size={16}/> 100</span>
                                 </span>
                             </button>
                         </div>
