@@ -32,9 +32,6 @@ declare global {
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Environment, Float, ContactShadows, Sparkles as DreiSparkles, Outlines } from '@react-three/drei';
-import * as THREE from 'three';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 
 import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, handleFirestoreError } from './firebase';
@@ -301,409 +298,60 @@ const DONATE_ITEMS = [
     },
 ];
 
-function HeroModel({ id = 0 }: { id?: number }) {
-    const swordRef = useRef<THREE.Group>(null);
-    useFrame((state) => {
-        if (swordRef.current) {
-            swordRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 3) * 0.2;
-        }
-    });
+const GENSHIN_LOLIS = [
+    'UI_AvatarIcon_Klee',
+    'UI_AvatarIcon_Qiqi',
+    'UI_AvatarIcon_Diona',
+    'UI_AvatarIcon_Sayu',
+    'UI_AvatarIcon_Nahida',
+    'UI_AvatarIcon_Dori',
+    'UI_AvatarIcon_Yaoyao',
+    'UI_AvatarIcon_Sigewinne',
+    'UI_AvatarIcon_Kachina',
+    'UI_AvatarIcon_Paimon',
+    'UI_AvatarIcon_Furina',
+    'UI_AvatarIcon_Hutao',
+    'UI_AvatarIcon_Nilou',
+    'UI_AvatarIcon_Ganyu',
+    'UI_AvatarIcon_Ayaka',
+    'UI_AvatarIcon_Lumine',
+    'UI_AvatarIcon_Yae',
+    'UI_AvatarIcon_Raiden'
+];
 
-    const colors = {
-        0: { primary: '#111827', secondary: '#374151', glow: '#ef4444', cape: '#7f1d1d' }, // Warrior
-        1: { primary: '#064e3b', secondary: '#0f766e', glow: '#10b981', cape: '#022c22' }, // Assassin
-        2: { primary: '#475569', secondary: '#94a3b8', glow: '#a855f7', cape: '#4c1d95' }, // Wanderer
-        3: { primary: '#450a0a', secondary: '#991b1b', glow: '#eab308', cape: '#000000' }  // Lord
-    }[id] || { primary: '#111827', secondary: '#374151', glow: '#ef4444', cape: '#7f1d1d' };
+const BOSS_ICONS = [
+    'UI_MonsterIcon_Dragon_Dvalin',
+    'UI_MonsterIcon_Wolf_Boreas',
+    'UI_MonsterIcon_Tartaglia',
+    'UI_MonsterIcon_Signora',
+    'UI_MonsterIcon_Shougun'
+];
 
-    return (
-        <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5}>
-            <group position={[0, -1, 0]} scale={0.8}>
-                {/* Legs */}
-                <mesh position={[-0.3, 0.6, 0]} castShadow receiveShadow>
-                    <capsuleGeometry args={[0.15, 0.9, 4, 16]}/>
-                    <meshToonMaterial color={colors.secondary}/>
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                <mesh position={[0.3, 0.6, 0]} castShadow receiveShadow>
-                    <capsuleGeometry args={[0.15, 0.9, 4, 16]}/>
-                    <meshToonMaterial color={colors.secondary}/>
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
+const NORMAL_MONSTERS = [
+    'UI_MonsterIcon_Slime_Fire',
+    'UI_MonsterIcon_Slime_Water',
+    'UI_MonsterIcon_Slime_Wind',
+    'UI_MonsterIcon_Slime_Elec',
+    'UI_MonsterIcon_Hili_Standard',
+    'UI_MonsterIcon_Hili_Wood',
+    'UI_MonsterIcon_Samachurl_Water',
+    'UI_MonsterIcon_Abyss_Fire',
+    'UI_MonsterIcon_RuinGuard',
+    'UI_MonsterIcon_RuinHunter'
+];
 
-                {/* Cape */}
-                <mesh position={[0, 1.8, -0.5]} rotation={[0.2, 0, 0]} castShadow receiveShadow>
-                    <boxGeometry args={[1.4, 2.8, 0.05]} />
-                    <meshToonMaterial color={colors.cape} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                
-                {/* Torso */}
-                <mesh position={[0, 1.8, 0]} castShadow receiveShadow>
-                    <capsuleGeometry args={[0.5, 0.8, 4, 16]} />
-                    <meshToonMaterial color={colors.primary} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
+const HERO_ICONS = [
+    'UI_AvatarIcon_Lumine', // Warrior
+    'UI_AvatarIcon_Hutao',  // Assassin
+    'UI_AvatarIcon_Ganyu',  // Wanderer
+    'UI_AvatarIcon_Furina'  // Lord
+];
 
-                {/* Chest Plate */}
-                <mesh position={[0, 1.9, 0.35]} castShadow receiveShadow>
-                    <boxGeometry args={[0.8, 0.7, 0.2]} />
-                    <meshToonMaterial color={colors.primary} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                {/* Core Glow */}
-                <mesh position={[0, 1.9, 0.46]}>
-                    <sphereGeometry args={[0.15, 16, 16]} />
-                    <meshToonMaterial color={colors.glow} emissive={colors.glow} emissiveIntensity={2} />
-                </mesh>
-
-                {/* Head */}
-                <mesh position={[0, 2.9, 0]} castShadow receiveShadow>
-                    <sphereGeometry args={[0.4, 32, 32]} />
-                    <meshToonMaterial color={colors.primary} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                {/* Visor */}
-                <mesh position={[0, 2.95, 0.31]} rotation={[0, 0, Math.PI/2]}>
-                    <capsuleGeometry args={[0.12, 0.5, 4, 16]} />
-                    <meshToonMaterial color={colors.glow} emissive={colors.glow} emissiveIntensity={4} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                <DreiSparkles count={20} scale={1} size={2} speed={0.5} color={colors.glow} opacity={0.8} />
-                {/* Horns/Crest */}
-                <mesh position={[-0.3, 3.2, 0]} rotation={[0, 0, 0.3]}>
-                    <coneGeometry args={[0.1, 0.5, 16]} />
-                    <meshToonMaterial color={colors.secondary} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                <mesh position={[0.3, 3.2, 0]} rotation={[0, 0, -0.3]}>
-                    <coneGeometry args={[0.1, 0.5, 16]} />
-                    <meshToonMaterial color={colors.secondary} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-
-                {/* Shoulders */}
-                <mesh position={[-0.7, 2.3, 0]} rotation={[0, 0, 0.2]}>
-                    <sphereGeometry args={[0.35, 32, 32]} />
-                    <meshToonMaterial color={colors.secondary} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                <mesh position={[0.7, 2.3, 0]} rotation={[0, 0, -0.2]}>
-                    <sphereGeometry args={[0.35, 32, 32]} />
-                    <meshToonMaterial color={colors.secondary} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-
-                {/* Sword Arm */}
-                <group position={[-0.8, 1.6, 0.2]} ref={swordRef}>
-                    {/* Arm */}
-                    <mesh position={[0, 0.4, 0]} rotation={[0.5, 0, 0]}>
-                        <capsuleGeometry args={[0.12, 0.6, 4, 16]} />
-                        <meshToonMaterial color={colors.secondary} />
-                        <Outlines thickness={0.02} color="black" />
-                    </mesh>
-                    {/* Sword Handle */}
-                    <mesh position={[0, -0.1, 0.3]} rotation={[1.5, 0, 0]}>
-                        <cylinderGeometry args={[0.06, 0.06, 0.8, 16]} />
-                        <meshToonMaterial color="#4b5563" />
-                        <Outlines thickness={0.02} color="black" />
-                    </mesh>
-                    {/* Sword Guard */}
-                    <mesh position={[0, -0.1, 0.7]} rotation={[1.5, 0, Math.PI/2]}>
-                        <capsuleGeometry args={[0.1, 0.8, 4, 16]} />
-                        <meshToonMaterial color={colors.primary} />
-                        <Outlines thickness={0.02} color="black" />
-                    </mesh>
-                    {/* Sword Blade */}
-                    <mesh position={[0, -0.1, 2.2]} rotation={[1.5, 0, 0]}>
-                        <boxGeometry args={[0.2, 3.0, 0.05]} />
-                        <meshToonMaterial color={colors.glow} emissive={colors.glow} emissiveIntensity={0.5} />
-                        <Outlines thickness={0.02} color="black" />
-                    </mesh>
-                </group>
-
-                {/* Shield Arm */}
-                <group position={[0.8, 1.6, 0.2]}>
-                    <mesh position={[0, 0.4, 0]} rotation={[0.5, 0, 0]}>
-                        <capsuleGeometry args={[0.12, 0.6, 4, 16]} />
-                        <meshToonMaterial color={colors.secondary} />
-                        <Outlines thickness={0.02} color="black" />
-                    </mesh>
-                    <mesh position={[0.2, 0, 0.4]} rotation={[0, 1.5, 0]}>
-                        <cylinderGeometry args={[0.7, 0.7, 0.1, 32]} />
-                        <meshToonMaterial color={colors.primary} />
-                        <Outlines thickness={0.02} color="black" />
-                    </mesh>
-                    <mesh position={[0.26, 0, 0.4]} rotation={[0, 1.5, 0]}>
-                        <cylinderGeometry args={[0.5, 0.5, 0.12, 32]} />
-                        <meshToonMaterial color={colors.cape} />
-                        <Outlines thickness={0.02} color="black" />
-                    </mesh>
-                </group>
-            </group>
-        </Float>
-    );
-}
-
-function MonsterModel({ isBoss, kills }: { isBoss: boolean, kills: number }) {
-    const group = useRef<THREE.Group>(null);
-    const ringRef = useRef<THREE.Group>(null);
-    
-    useFrame((state) => {
-        const t = state.clock.elapsedTime;
-        if (group.current) {
-            group.current.position.y = Math.sin(t * (isBoss ? 2 : 3)) * 0.2;
-        }
-        if (ringRef.current) {
-            ringRef.current.rotation.x = t * 0.5;
-            ringRef.current.rotation.y = t * 0.8;
-        }
-    });
-
-    const mainColor = isBoss ? "#b91c1c" : "#7e22ce";
-    const armorColor = isBoss ? "#1a0505" : "#1a1025";
-    const scale = isBoss ? 1.5 : 1;
-
-    return (
-        <Float speed={3} rotationIntensity={0.5} floatIntensity={1}>
-            <group ref={group} scale={scale}>
-                {/* Core */}
-                <mesh>
-                    <octahedronGeometry args={[1, 0]} />
-                    <meshToonMaterial color={mainColor} emissive={mainColor} emissiveIntensity={2} wireframe={!isBoss} />
-                    <Outlines thickness={0.03} color="black" />
-                </mesh>
-                {/* Kawaii details */}
-                <mesh position={[0, 1.2, 0]}>
-                    <sphereGeometry args={[0.3, 16, 16]} />
-                    <meshToonMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                
-                {/* Armor Shells */}
-                <mesh position={[0, 0.5, 0]} rotation={[0, 0.78, 0]}>
-                    <coneGeometry args={[1.2, 1, 4]} />
-                    <meshToonMaterial color={armorColor} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-                <mesh position={[0, -0.5, 0]} rotation={[3.14, 0.78, 0]}>
-                    <coneGeometry args={[1.2, 1, 4]} />
-                    <meshToonMaterial color={armorColor} />
-                    <Outlines thickness={0.02} color="black" />
-                </mesh>
-
-                {/* Orbiting Ring */}
-                <group ref={ringRef}>
-                    {[...Array(isBoss ? 8 : 4)].map((_, i) => {
-                        const angle = (i / (isBoss ? 8 : 4)) * Math.PI * 2;
-                        return (
-                            <mesh key={i} position={[Math.cos(angle) * 2, 0, Math.sin(angle) * 2]} rotation={[0, -angle, 0]}>
-                                <boxGeometry args={[0.2, 0.8, 0.2]} />
-                                <meshToonMaterial color={armorColor} />
-                                <Outlines thickness={0.02} color="black" />
-                                <mesh position={[0, 0, 0.1]}>
-                                    <boxGeometry args={[0.1, 0.4, 0.15]} />
-                                    <meshToonMaterial color={mainColor} emissive={mainColor} emissiveIntensity={1} />
-                                    <Outlines thickness={0.01} color="black" />
-                                </mesh>
-                            </mesh>
-                        );
-                    })}
-                </group>
-
-                {/* Boss specific details */}
-                {isBoss && (
-                    <>
-                        {/* Crown */}
-                        <mesh position={[0, 1.5, 0]}>
-                            <torusGeometry args={[0.6, 0.1, 16, 5]} />
-                            <meshToonMaterial color="#f59e0b" emissive="#f59e0b" emissiveIntensity={1} />
-                            <Outlines thickness={0.02} color="black" />
-                        </mesh>
-                        {/* Floating Hands */}
-                        <mesh position={[-2, -1, 1]} rotation={[0, 0.5, 0.5]}>
-                            <boxGeometry args={[0.6, 1.2, 0.4]} />
-                            <meshToonMaterial color={armorColor} />
-                            <Outlines thickness={0.02} color="black" />
-                        </mesh>
-                        <mesh position={[2, -1, 1]} rotation={[0, -0.5, -0.5]}>
-                            <boxGeometry args={[0.6, 1.2, 0.4]} />
-                            <meshToonMaterial color={armorColor} />
-                            <Outlines thickness={0.02} color="black" />
-                        </mesh>
-                    </>
-                )}
-            </group>
-        </Float>
-    );
-}
-
-function SwordModel() {
-    return (
-        <group>
-            <mesh position={[0, -0.2, 0]}><cylinderGeometry args={[0.05, 0.05, 0.4]}/><meshToonMaterial color="#4b5563"/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0, 0]}><boxGeometry args={[0.4, 0.1, 0.1]}/><meshToonMaterial color="#111827" /><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0.6, 0]}><boxGeometry args={[0.1, 1.2, 0.05]}/><meshToonMaterial color="#e5e7eb" /><Outlines thickness={0.02} color="black"/></mesh>
-        </group>
-    );
-}
-
-function BowModel() {
-    return (
-        <group>
-            <mesh position={[0, 0, 0]} rotation={[0, 0, 0]}>
-                <torusGeometry args={[0.6, 0.05, 8, 16, Math.PI]} />
-                <meshToonMaterial color="#78350f" />
-                <Outlines thickness={0.02} color="black"/>
-            </mesh>
-            <mesh position={[0, 0, 0]} rotation={[0, 0, Math.PI/2]}>
-                <cylinderGeometry args={[0.01, 0.01, 1.2]} />
-                <meshToonMaterial color="#e5e7eb" />
-                <Outlines thickness={0.02} color="black"/>
-            </mesh>
-        </group>
-    );
-}
-
-function StaffModel() {
-    return (
-        <group>
-            <mesh position={[0, 0, 0]}><cylinderGeometry args={[0.05, 0.05, 1.5]}/><meshToonMaterial color="#451a03"/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0.8, 0]}><sphereGeometry args={[0.15, 16, 16]}/><meshToonMaterial color="#3b82f6" emissive="#3b82f6" emissiveIntensity={2}/><Outlines thickness={0.02} color="black"/></mesh>
-        </group>
-    );
-}
-
-function KatanaModel() {
-    return (
-        <group>
-            <mesh position={[0, -0.2, 0]}><cylinderGeometry args={[0.04, 0.04, 0.5]}/><meshToonMaterial color="#172554"/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0.05, 0]}><cylinderGeometry args={[0.1, 0.1, 0.05]}/><meshToonMaterial color="#fbbf24" /><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0.7, 0]} rotation={[0, 0, -0.05]}><boxGeometry args={[0.06, 1.4, 0.02]}/><meshToonMaterial color="#e5e7eb" /><Outlines thickness={0.02} color="black"/></mesh>
-        </group>
-    );
-}
-
-function HammerModel() {
-    return (
-        <group>
-            <mesh position={[0, 0, 0]}><cylinderGeometry args={[0.06, 0.06, 1.2]}/><meshToonMaterial color="#78350f"/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0.6, 0]} rotation={[0, 0, Math.PI/2]}><cylinderGeometry args={[0.2, 0.2, 0.6]}/><meshToonMaterial color="#9ca3af" /><Outlines thickness={0.02} color="black"/></mesh>
-        </group>
-    );
-}
-
-function DaggerModel() {
-    return (
-        <group>
-            <mesh position={[0, -0.1, 0]}><cylinderGeometry args={[0.03, 0.03, 0.2]}/><meshToonMaterial color="#1f2937"/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0, 0]}><boxGeometry args={[0.2, 0.05, 0.05]}/><meshToonMaterial color="#111827" /><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0.3, 0]}><boxGeometry args={[0.06, 0.6, 0.02]}/><meshToonMaterial color="#9ca3af" /><Outlines thickness={0.02} color="black"/></mesh>
-        </group>
-    );
-}
-
-function OrbModel() {
-    return (
-        <group>
-            <mesh position={[0, 0, 0]}><sphereGeometry args={[0.2, 16, 16]}/><meshToonMaterial color="#a855f7" emissive="#a855f7" emissiveIntensity={2}/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0, 0]} rotation={[Math.PI/4, 0, 0]}><torusGeometry args={[0.3, 0.02, 8, 16]}/><meshToonMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={1}/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0, 0, 0]} rotation={[0, Math.PI/4, 0]}><torusGeometry args={[0.3, 0.02, 8, 16]}/><meshToonMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={1}/><Outlines thickness={0.02} color="black"/></mesh>
-        </group>
-    );
-}
-
-function Humanoid({ primary, secondary, weaponType }: { primary: string, secondary: string, weaponType: number }) {
-    return (
-        <group position={[0, -0.8, 0]}>
-            {/* Legs */}
-            <mesh position={[-0.2, 0.4, 0]}><capsuleGeometry args={[0.12, 0.6, 4, 16]}/><meshToonMaterial color={secondary}/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0.2, 0.4, 0]}><capsuleGeometry args={[0.12, 0.6, 4, 16]}/><meshToonMaterial color={secondary}/><Outlines thickness={0.02} color="black"/></mesh>
-            
-            {/* Torso */}
-            <mesh position={[0, 1.2, 0]}><capsuleGeometry args={[0.3, 0.6, 4, 16]}/><meshToonMaterial color={primary}/><Outlines thickness={0.02} color="black"/></mesh>
-            
-            {/* Head */}
-            <mesh position={[0, 1.9, 0]}><sphereGeometry args={[0.3, 32, 32]}/><meshToonMaterial color={secondary}/><Outlines thickness={0.02} color="black"/></mesh>
-            {/* Visor/Eyes */}
-            <mesh position={[0, 1.95, 0.26]} rotation={[0, 0, Math.PI/2]}><capsuleGeometry args={[0.05, 0.2, 4, 16]} /><meshToonMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1}/><Outlines thickness={0.01} color="black"/></mesh>
-
-            {/* Arms */}
-            <group position={[-0.45, 1.4, 0]} rotation={[0, 0, 0.2]}>
-                <mesh position={[0, -0.3, 0]}><capsuleGeometry args={[0.08, 0.5, 4, 16]}/><meshToonMaterial color={secondary}/><Outlines thickness={0.02} color="black"/></mesh>
-            </group>
-            
-            <group position={[0.45, 1.4, 0]} rotation={[0, 0, -0.2]}>
-                <mesh position={[0, -0.3, 0]}><capsuleGeometry args={[0.08, 0.5, 4, 16]}/><meshToonMaterial color={secondary}/><Outlines thickness={0.02} color="black"/></mesh>
-                
-                {/* Weapon Attachment */}
-                <group position={[0, -0.6, 0.2]} rotation={[Math.PI/2, 0, 0]}>
-                    {weaponType === 0 && <SwordModel />}
-                    {weaponType === 1 && <BowModel />}
-                    {weaponType === 2 && <StaffModel />}
-                    {weaponType === 3 && <KatanaModel />}
-                    {weaponType === 4 && <HammerModel />}
-                    {weaponType === 5 && <DaggerModel />}
-                    {weaponType === 6 && <OrbModel />}
-                </group>
-            </group>
-            
-            {/* Left hand weapon for Assassin */}
-            {weaponType === 5 && (
-                <group position={[-0.45, 1.4, 0]} rotation={[0, 0, 0.2]}>
-                    <group position={[0, -0.6, 0.2]} rotation={[Math.PI/2, 0, 0]}>
-                        <DaggerModel />
-                    </group>
-                </group>
-            )}
-        </group>
-    );
-}
-
-function DragonModel({ primary, secondary }: { primary: string, secondary: string }) {
-    return (
-        <group position={[0, -0.5, 0]}>
-            {/* Body */}
-            <mesh position={[0, 0.8, 0]} rotation={[0.5, 0, 0]}><cylinderGeometry args={[0.4, 0.6, 1.5]}/><meshToonMaterial color={primary}/><Outlines thickness={0.03} color="black"/></mesh>
-            {/* Head */}
-            <mesh position={[0, 1.8, 0.6]}><boxGeometry args={[0.5, 0.5, 0.8]}/><meshToonMaterial color={primary}/><Outlines thickness={0.02} color="black"/></mesh>
-            {/* Eyes */}
-            <mesh position={[-0.25, 1.9, 0.8]}><sphereGeometry args={[0.08]}/><meshToonMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2}/></mesh>
-            <mesh position={[0.25, 1.9, 0.8]}><sphereGeometry args={[0.08]}/><meshToonMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2}/></mesh>
-            {/* Wings */}
-            <mesh position={[-0.6, 1.2, -0.2]} rotation={[0, -0.5, 0.5]}><boxGeometry args={[1.5, 0.1, 0.8]}/><meshToonMaterial color={secondary}/><Outlines thickness={0.02} color="black"/></mesh>
-            <mesh position={[0.6, 1.2, -0.2]} rotation={[0, 0.5, -0.5]}><boxGeometry args={[1.5, 0.1, 0.8]}/><meshToonMaterial color={secondary}/><Outlines thickness={0.02} color="black"/></mesh>
-            {/* Tail */}
-            <mesh position={[0, 0.2, -0.8]} rotation={[-0.5, 0, 0]}><coneGeometry args={[0.3, 1.5, 4]}/><meshToonMaterial color={primary}/><Outlines thickness={0.02} color="black"/></mesh>
-        </group>
-    );
-}
-
-function MiniModel({ index }: { index: number }) {
-    const colors = [
-        { primary: '#94a3b8', secondary: '#475569' }, // Squire (Silver/Gray)
-        { primary: '#4ade80', secondary: '#166534' }, // Archer (Green)
-        { primary: '#60a5fa', secondary: '#1e3a8a' }, // Mage (Blue)
-        { primary: '#f87171', secondary: '#7f1d1d' }, // Samurai (Red)
-        { primary: '#facc15', secondary: '#854d0e' }, // Paladin (Gold)
-        { primary: '#111827', secondary: '#000000' }, // Assassin (Black)
-        { primary: '#c084fc', secondary: '#581c87' }, // Summoner (Purple)
-        { primary: '#dc2626', secondary: '#450a0a' }  // Dragon (Dark Red)
-    ];
-    const c = colors[index % colors.length];
-
-    return (
-        <Float speed={3} rotationIntensity={0.5} floatIntensity={0.5}>
-            <group scale={0.55} position={[0, -0.4, 0]}>
-                {index === 7 ? (
-                    <DragonModel primary={c.primary} secondary={c.secondary} />
-                ) : (
-                    <Humanoid primary={c.primary} secondary={c.secondary} weaponType={index} />
-                )}
-            </group>
-        </Float>
-    );
-}
+const handleImageError = (fallbackData: string) => (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    if (e.currentTarget.src !== fallbackData) {
+        e.currentTarget.src = fallbackData;
+    }
+};
 
 function Particles({ color }: { color: string }) {
     return (
@@ -733,6 +381,10 @@ function Particles({ color }: { color: string }) {
 
 function TeamAvatar({ index, level, name, ...props }: { index: number, level: number, name: string, [key: string]: any }) {
     if (level === 0) return null;
+    const isEpic = index > 5;
+    
+    const iconName = GENSHIN_LOLIS[index % GENSHIN_LOLIS.length];
+
     return (
         <motion.div 
             initial={{ y: -20, opacity: 0 }}
@@ -740,30 +392,44 @@ function TeamAvatar({ index, level, name, ...props }: { index: number, level: nu
             transition={{ y: { duration: 2 + index * 0.2, repeat: Infinity, ease: "easeInOut" } }}
             className="relative flex flex-col items-center group"
         >
-            <div className="w-20 h-24 relative overflow-visible transition-transform group-hover:scale-110">
-                <Canvas camera={{ position: [0, 0.5, 3.5], fov: 45 }} gl={{ antialias: true, alpha: true }}>
-                    <ambientLight intensity={0.5} />
-                    <directionalLight position={[2, 5, 2]} intensity={1} />
-                    <MiniModel index={index} />
-                    <DreiSparkles count={15} scale={2} size={1} speed={0.2} color="#ffffff" opacity={0.5} />
-                </Canvas>
-                <div className="absolute -bottom-2 left-0 w-full text-center text-[11px] font-black text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">LV.{level}</div>
+            <div className="w-16 h-16 relative overflow-visible transition-transform group-hover:scale-110">
+                <div className={`absolute inset-0 rounded-full border-2 overflow-hidden shadow-[inset_0_0_10px_rgba(0,0,0,0.8)] ${isEpic ? 'bg-purple-900 border-yellow-500' : 'bg-[#e9e5dc] border-zinc-500'}`}>
+                    <img 
+                        src={`https://enka.network/ui/${iconName}.png`} 
+                        alt={name} 
+                        onError={handleImageError('https://enka.network/ui/UI_AvatarIcon_Paimon.png')}
+                        className="w-full h-full object-cover filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+                        referrerPolicy="no-referrer"
+                    />
+                </div>
+                {isEpic && <div className="absolute -inset-1 rounded-full border border-yellow-500/50 animate-spin" style={{ animationDuration: '3s' }} />}
+                <div className="absolute -bottom-2 left-0 w-full text-center text-[10px] font-black text-white bg-black/80 rounded-full px-1 shadow-md border border-zinc-700">LV.{level}</div>
             </div>
-            <div className="mt-4 text-[10px] font-extrabold text-zinc-300 uppercase tracking-wider drop-shadow-md whitespace-nowrap">{name}</div>
+            <div className={`mt-3 text-[10px] font-extrabold uppercase tracking-wider drop-shadow-md whitespace-nowrap ${isEpic ? 'text-yellow-400' : 'text-zinc-300'}`}>{name}</div>
         </motion.div>
     );
 }
 
 function HeroPortrait({ level, heroId }: { level: number; heroId: number }) {
+    const iconName = HERO_ICONS[heroId % HERO_ICONS.length] || 'UI_AvatarIcon_Lumine';
+    
     return (
-        <div className="relative w-full max-w-[130px] lg:max-w-none lg:w-52 h-[180px] lg:h-[340px] group origin-bottom mx-auto">
-            <Canvas camera={{ position: [0, 1.5, 5.5], fov: 50 }} gl={{ antialias: true, alpha: true }}>
-                <ambientLight intensity={0.6} />
-                <pointLight position={[5, 5, 5]} intensity={20} color="#ef4444" />
-                <pointLight position={[-5, 5, -5]} intensity={15} color="#3b82f6" />
-                <HeroModel id={heroId} />
-                <DreiSparkles count={40} scale={4} size={2} speed={0.4} color="#ef4444" opacity={0.8} />
-            </Canvas>
+        <div className="relative w-full max-w-[130px] lg:max-w-none lg:w-52 h-[180px] lg:h-[340px] group origin-bottom mx-auto flex items-end justify-center pb-8">
+            <div className="absolute inset-0 bg-gradient-to-t from-red-900/30 to-transparent rounded-t-full -z-10 pointer-events-none"></div>
+            
+            <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="relative z-10 w-32 h-40 lg:w-48 lg:h-64"
+            >
+                <img 
+                    src={`https://enka.network/ui/${iconName}.png`}
+                    alt="Hero"
+                    onError={handleImageError('https://enka.network/ui/UI_AvatarIcon_Paimon.png')}
+                    className="w-full h-full object-contain filter drop-shadow-[0_10px_15px_rgba(239,68,68,0.4)]"
+                    referrerPolicy="no-referrer"
+                />
+            </motion.div>
             
             <div className="absolute bottom-2 left-0 w-full flex flex-col items-center z-30 pointer-events-none">
                 <div className="text-red-500 font-black text-[10px] tracking-[0.4em] uppercase mb-0 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]">Awakened</div>
@@ -774,18 +440,30 @@ function HeroPortrait({ level, heroId }: { level: number; heroId: number }) {
 }
 
 function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: number, name: string }) {
+    const stage = Math.floor(kills / 5);
+    const iconName = isBoss 
+        ? BOSS_ICONS[stage % BOSS_ICONS.length] 
+        : NORMAL_MONSTERS[kills % NORMAL_MONSTERS.length];
+
     return (
-        <div className={`relative w-full max-w-[150px] lg:max-w-none lg:w-64 h-[180px] lg:h-[340px] transition-all duration-300 origin-bottom mx-auto`}>
+        <div className={`relative w-full max-w-[150px] lg:max-w-none lg:w-64 h-[180px] lg:h-[340px] transition-all duration-300 origin-bottom mx-auto flex items-center justify-center`}>
             {isBoss && (
                 <div className="absolute inset-0 bg-red-500/20 blur-[50px] rounded-full pointer-events-none animate-pulse"></div>
             )}
-            <Canvas camera={{ position: [0, 0, 7], fov: 50 }} gl={{ antialias: true, alpha: true }}>
-                <ambientLight intensity={0.5} />
-                <pointLight position={[0, 0, 0]} intensity={20} color={isBoss ? "#ef4444" : "#a855f7"} />
-                <pointLight position={[5, 5, 5]} intensity={15} />
-                <MonsterModel isBoss={isBoss} kills={kills} />
-                <DreiSparkles count={isBoss ? 80 : 40} scale={5} size={isBoss ? 4 : 2} speed={0.6} color={isBoss ? "#f59e0b" : "#ef4444"} opacity={0.8} />
-            </Canvas>
+            
+            <motion.div
+                animate={{ y: [0, isBoss ? -15 : -8, 0], scale: isBoss ? [1, 1.05, 1] : 1 }}
+                transition={{ duration: isBoss ? 2 : 3, repeat: Infinity, ease: "easeInOut" }}
+                className={`relative z-10 ${isBoss ? 'w-40 h-40 lg:w-64 lg:h-64' : 'w-24 h-24 lg:w-40 lg:h-40'}`}
+            >
+                <img 
+                    src={`https://enka.network/ui/${iconName}.png`}
+                    alt={name}
+                    onError={handleImageError('https://enka.network/ui/UI_MonsterIcon_Slime_Fire.png')}
+                    className={`w-full h-full object-contain filter drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] ${isBoss ? 'brightness-110 drop-shadow-[0_0_30px_rgba(239,68,68,0.6)]' : ''}`}
+                    referrerPolicy="no-referrer"
+                />
+            </motion.div>
         </div>
     );
 }
@@ -1006,7 +684,9 @@ export default function App() {
             setIsLoadingLeaderboard(false);
             
             if (auth.currentUser) {
-                const myRank = snapshot.docs.findIndex(doc => doc.id === auth.currentUser?.uid);
+                const tgInitData = (window as any).Telegram?.WebApp?.initDataUnsafe;
+                const telegramUserId = tgInitData?.user?.id?.toString();
+                const myRank = snapshot.docs.findIndex(doc => doc.id === (telegramUserId || auth.currentUser?.uid));
                 if (myRank !== -1) setUserRank(myRank + 1);
             }
         }, (err) => {
@@ -1043,12 +723,18 @@ export default function App() {
         const isAI = lowerName.includes('gemini') || lowerName.includes('ais agent') || lowerName.includes('ais_agent');
 
         if (shouldSync && !isAI) {
-            const uid = auth.currentUser.uid;
+            const tgInitData = (window as any).Telegram?.WebApp?.initDataUnsafe;
+            const telegramUserId = tgInitData?.user?.id?.toString();
+            // Use Telegram ID if available, otherwise fallback to Firebase anonymous UID.
+            // This ensures cross-device tracking for the same Telegram account.
+            const uid = telegramUserId || auth.currentUser.uid;
+            
             // powerScore takes into account glory (major) and kills (minor) to ensure prestige always moves you up
             const powerScore = (gameState.glory * 1000000) + gameState.totalKills;
             
             const entry = {
                 uid,
+                tgId: telegramUserId || null,
                 username: playerName,
                 stage,
                 subStage: gameState.subStage,
@@ -1426,13 +1112,15 @@ export default function App() {
                                     <div className="absolute -left-4 -top-4 w-16 h-16 bg-gradient-to-br from-pink-300/20 to-transparent rounded-full blur-xl group-hover:scale-150 transition-transform"></div>
                                     <div className="flex justify-between items-start z-10">
                                         <div className="flex gap-3 items-center">
-                                            <div className="w-14 h-14 bg-zinc-900/50 border border-red-900/50 rounded-full flex items-center justify-center overflow-hidden shadow-sm">
+                                            <div className="w-14 h-14 bg-[#e9e5dc] border border-red-900/50 rounded-full flex items-center justify-center overflow-hidden shadow-sm">
                                                 {m.level > 0 ? (
-                                                    <Canvas camera={{ position: [0, 0.5, 3.5], fov: 45 }} gl={{ antialias: true, alpha: true }}>
-                                                        <ambientLight intensity={0.5} />
-                                                        <directionalLight position={[2, 5, 2]} intensity={1} />
-                                                        <MiniModel index={i} />
-                                                    </Canvas>
+                                                    <img 
+                                                        src={`https://enka.network/ui/${GENSHIN_LOLIS[i % GENSHIN_LOLIS.length]}.png`} 
+                                                        alt={m.name} 
+                                                        onError={handleImageError('https://enka.network/ui/UI_AvatarIcon_Paimon.png')}
+                                                        className="w-full h-full object-cover filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+                                                        referrerPolicy="no-referrer"
+                                                    />
                                                 ) : (
                                                     <div className="text-2xl opacity-50">👤</div>
                                                 )}

@@ -19,13 +19,15 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(uid) {
-      return isAuthenticated() && request.auth.uid == uid;
+    function isOwner(uid, data) {
+      // Allow if Firebase UID matches, OR if tgId in data matches the document ID
+      // This allows Telegram users to update their own leaderboard entry regardless of the ephemeral Firebase Auth UID
+      // Warning: in a real production environment, use Firebase Custom Tokens for true authentication.
+      return isAuthenticated() && (request.auth.uid == uid || (data.keys().hasAll(['tgId']) && uid == data.tgId));
     }
 
     function isValidLeaderboardEntry(data) {
-      return data.keys().hasAll(['uid', 'username', 'stage', 'subStage', 'dps', 'glory', 'lastUpdated']) &&
-             data.uid is string && data.uid.size() > 0 &&
+      return data.keys().hasAll(['username', 'stage', 'subStage', 'dps', 'glory', 'lastUpdated']) &&
              data.username is string && data.username.size() >= 1 && data.username.size() <= 64 &&
              data.stage is number &&
              data.subStage is number &&
@@ -36,7 +38,7 @@ service cloud.firestore {
 
     match /leaderboard/{uid} {
       allow read: if true;
-      allow create, update: if isOwner(uid) && isValidLeaderboardEntry(request.resource.data);
+      allow create, update: if isOwner(uid, request.resource.data) && isValidLeaderboardEntry(request.resource.data);
       allow delete: if false;
     }
   }
