@@ -34,7 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 
-import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, handleFirestoreError } from './firebase';
+import { auth, db, signInAnonymously, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, handleFirestoreError } from './firebase';
 
 type GameState = {
     gold: number;
@@ -593,6 +593,8 @@ export default function App() {
     const [gachaModal, setGachaModal] = useState<{show: boolean, spinning: boolean, prize: any, rotation: number, error?: string | null}>({show: false, spinning: false, prize: null, rotation: 0});
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [playerName, setPlayerName] = useState('Аноним');
+    const playerNameRef = useRef(playerName);
+    useEffect(() => { playerNameRef.current = playerName; }, [playerName]);
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
     const [userRank, setUserRank] = useState<number | null>(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
@@ -733,23 +735,47 @@ export default function App() {
             const bestPerName = new Map();
             rawData.forEach((entry: any) => {
                 const name = (entry.username || '').toLowerCase().trim();
+                // Since they are ordered by power score descending by the query, the first one encountered is usually the best, 
+                // but let's be safe.
                 if (!bestPerName.has(name) || bestPerName.get(name).powerScore < entry.powerScore) {
                     bestPerName.set(name, entry);
                 }
             });
             
-            const data = Array.from(bestPerName.values())
-                             .sort((a: any, b: any) => b.powerScore - a.powerScore)
-                             .slice(0, 15);
+            const fullyProcessedData = Array.from(bestPerName.values())
+                             .sort((a: any, b: any) => b.powerScore - a.powerScore);
                              
-            setLeaderboard(data);
+            setLeaderboard(fullyProcessedData.slice(0, 15));
             setIsLoadingLeaderboard(false);
             
             if (auth.currentUser) {
                 const tgInitData = (window as any).Telegram?.WebApp?.initDataUnsafe;
                 const telegramUserId = tgInitData?.user?.id?.toString();
-                const myRank = snapshot.docs.findIndex(doc => doc.id === (telegramUserId || auth.currentUser?.uid));
+                
+                // Cleanup duplicate accounts for the current logged-in user
+                const currName = playerNameRef.current.toLowerCase().trim();
+                if (currName && currName !== 'аноним') {
+                    const myEntries = rawData.filter((u: any) => (u.username || '').toLowerCase().trim() === currName);
+                    if (myEntries.length > 1) {
+                        // Ensure it's sorted by powerScore desc
+                        myEntries.sort((a: any, b: any) => b.powerScore - a.powerScore);
+                        // Delete all except the best one
+                        for (let i = 1; i < myEntries.length; i++) {
+                            deleteDoc(doc(db, 'leaderboard', myEntries[i].id)).catch(console.error);
+                        }
+                    }
+                }
+
+                // Calculate rank based on deduplicated list
+                const currentUid = telegramUserId || auth.currentUser.uid;
+                let myRank = fullyProcessedData.findIndex((d: any) => d.id === currentUid);
+                if (myRank === -1) {
+                    // Try to match by name if UID changed due to anon logout
+                    myRank = fullyProcessedData.findIndex((d: any) => (d.username || '').toLowerCase().trim() === currName);
+                }
+                
                 if (myRank !== -1) setUserRank(myRank + 1);
+                else setUserRank(null);
             }
         }, (err) => {
             setIsLoadingLeaderboard(false);
