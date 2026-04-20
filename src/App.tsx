@@ -60,6 +60,8 @@ type GameState = {
         autoClickerUntil: number;
         wrathUntil: number;
     };
+    combo: number;
+    lastClickTime: number;
 };
 
 const INITIAL_STATE: GameState = {
@@ -67,6 +69,8 @@ const INITIAL_STATE: GameState = {
     totalKills: 0, subStage: 1, isBoss: false, bossTime: 30,
     player: { lvl: 1, gear: { sword: 1, armor: 1, wings: 0, ring: 0 } },
     buffs: { frenzyUntil: 0, autoClickerUntil: 0, wrathUntil: 0 },
+    combo: 0,
+    lastClickTime: 0,
     mercs: [
         { id:0, name:'Кли', atk:5, cost:20, level:0, maxLevel: 100 },
         { id:1, name:'Цици', atk:22, cost:150, level:0, maxLevel: 100 },
@@ -121,12 +125,14 @@ const HEROES_DATA = [
     { id: 3, name: 'Владыка', ability: 'x2 Общий урон', gloryReq: 100, cost: 500000000, color: 'text-red-500' },
 ];
 
-function getClickDmg(state: GameState) {
+function getClickDmg(state: GameState, comboMult: number = 1) {
     let dmg = (15 + state.player.gear.sword * 25) * (1 + state.player.lvl * 0.25);
-    // Prestige bonus increased to 25% per Glory for more 'pleasant' progression
     dmg *= (1 + state.glory * 0.25);
     
     if (state.mainHero.id === 2) dmg *= 1.5;
+    
+    // Apply Combo Multiplier
+    dmg *= comboMult;
     
     // Calculate critical hit
     let critChance = 0.05 + state.player.gear.armor * 0.02; // Base 5% + 2% per armor level
@@ -552,7 +558,9 @@ export default function App() {
     const [authError, setAuthError] = useState<string | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [newName, setNewName] = useState('');
-    
+    const [flyingChest, setFlyingChest] = useState<{x: number, y: number, show: boolean, type: 'gold' | 'gems' | 'souls'}>({x: 0, y: 0, show: false, type: 'gold'});
+    const comboRef = useRef(0);
+    const lastClickRef = useRef(Date.now());
     const popupIdRef = useRef(0);
     const activeDpsBufRef = useRef(0);
     const gameStateRef = useRef(gameState);
@@ -805,6 +813,10 @@ export default function App() {
     useEffect(() => {
         const interval = setInterval(() => {
             const now = Date.now();
+            if (now - lastClickRef.current > 1000) {
+                comboRef.current = 0; // Reset combo if idle
+            }
+            
             setGameState(prev => {
                 let next = { ...prev };
                 let dps = getStaticDps(next);
@@ -866,8 +878,37 @@ export default function App() {
         return () => clearInterval(dpsInterval);
     }, []);
 
+    useEffect(() => {
+        const chestInterval = setInterval(() => {
+            if (Math.random() > 0.6) {
+                const types: ('gold' | 'gems' | 'souls')[] = ['gold', 'gold', 'gems', 'souls'];
+                setFlyingChest({
+                    x: Math.random() * (window.innerWidth - 80),
+                    y: Math.random() * (window.innerHeight - 80),
+                    show: true,
+                    type: types[Math.floor(Math.random() * types.length)]
+                });
+                
+                setTimeout(() => {
+                    setFlyingChest(prev => ({...prev, show: false}));
+                }, 4000);
+            }
+        }, 30000); // Check every 30 seconds
+        return () => clearInterval(chestInterval);
+    }, []);
+
     const handleHit = (e?: React.MouseEvent) => {
-        const dmg = getClickDmg(gameState);
+        const now = Date.now();
+        if (now - lastClickRef.current < 1000) {
+            comboRef.current = Math.min(comboRef.current + 1, 100);
+        } else {
+            comboRef.current = 1;
+        }
+        lastClickRef.current = now;
+        
+        let comboMult = 1 + (Math.floor(comboRef.current / 10) * 0.1); // Max +1.0 (2x damage at 100 combo)
+        
+        const dmg = getClickDmg(gameState, comboMult);
         activeDpsBufRef.current += dmg;
         
         if (e) {
@@ -887,6 +928,30 @@ export default function App() {
         }
         
         setGameState(prev => applyDamage(prev, dmg, true));
+    };
+
+    const clickFlyingChest = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setFlyingChest(prev => ({...prev, show: false}));
+        
+        const tg = (window as any).Telegram?.WebApp;
+        
+        setGameState(prev => {
+            const stage = Math.floor(prev.totalKills / 5) + 1;
+            let next = { ...prev };
+            if (flyingChest.type === 'gold') {
+                const amount = Math.floor(80 * Math.pow(1.45, stage)) * 5;
+                next.gold += amount;
+                tg?.showAlert?.(`Вы поймали летучую добычу! +${format(amount)} Золота`);
+            } else if (flyingChest.type === 'gems') {
+                next.crystals += 10;
+                tg?.showAlert?.(`Вы поймали летучую добычу! +10 Кристаллов`);
+            } else {
+                next.souls += stage * 2;
+                tg?.showAlert?.(`Вы поймали летучую добычу! +${stage * 2} Душ`);
+            }
+            return next;
+        });
     };
 
     const buyMerc = (id: number) => {
@@ -1428,7 +1493,10 @@ export default function App() {
                                                 <span className="text-zinc-200 font-bold truncate max-w-[120px]">{p.username}</span>
                                             </div>
                                             <div className="flex flex-col items-end text-xs shrink-0">
-                                                <span className="text-red-400 font-black">Stage {p.stage}</span>
+                                                <span className="text-red-400 font-black flex items-center gap-1">
+                                                    Stage {p.stage} 
+                                                    {p.glory > 0 && <span className="text-orange-400 block ml-1" title="Перерождений (Слава)"><Trophy size={10} className="inline mr-0.5" />{format(p.glory)}</span>}
+                                                </span>
                                                 <span className="text-zinc-500 text-[10px]">{format(p.dps)} DPS</span>
                                             </div>
                                         </div>
