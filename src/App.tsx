@@ -643,22 +643,26 @@ export default function App() {
                 } catch(e) {}
 
                 // Load from CloudStorage if supported (v6.9+) - Disabled due to DATA_TOO_LONG errors
-                /*
-                if (tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-                    try {
-                        tg.CloudStorage.getItem('animeSoul_save', (err: any, value: string) => {
-                            if (!err && value) {
-                                try {
-                                    const rawData = decodeURIComponent(atob(value));
-                                    const parsed = JSON.parse(rawData);
-                                    setGameState(prev => ({ ...prev, ...parsed }));
-                                    if (parsed.username) setPlayerName(parsed.username);
-                                } catch (e) { console.error("Cloud load fail", e); }
+                
+                // --- NEW SYNC LOGIC: Migrate localStorage to Firebase ---
+                const migrateSave = async () => {
+                    const saved = localStorage.getItem('animeSoul_save');
+                    if (saved) {
+                        try {
+                            const tgUser = tg.initDataUnsafe?.user;
+                            if (tgUser && tgUser.id) {
+                                const saveDocRef = doc(db, 'saves', tgUser.id.toString());
+                                const rawData = saved.startsWith('{') ? saved : decodeURIComponent(atob(saved));
+                                await setDoc(saveDocRef, JSON.parse(rawData));
+                                localStorage.removeItem('animeSoul_save'); // Clear after migration
+                                console.log("Save migrated to Firebase");
                             }
-                        });
-                    } catch(e) {}
-                }
-                */
+                        } catch (e) {
+                            console.error("Migration failed", e);
+                        }
+                    }
+                };
+                migrateSave();
             }
         } catch (e) {
             console.error("TG Init suppressed error", e);
