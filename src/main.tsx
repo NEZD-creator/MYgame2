@@ -4,8 +4,8 @@ import { TonConnectUIProvider } from '@tonconnect/ui-react';
 import App from './App.tsx';
 import './index.css';
 
-// Используем абсолютный путь к корню, чтобы избежать проблем с подпапками (например, на GitHub Pages)
-const manifestUrl = window.location.origin + '/tonconnect-manifest.json';
+// Жестко задаем URL приложения, чтобы Mini App всегда стучался по правильному адресу нашего сервера
+const manifestUrl = 'https://ais-dev-i23mijz2ljza6sfpg72euo-783580602421.europe-west2.run.app/tonconnect-manifest.json';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
