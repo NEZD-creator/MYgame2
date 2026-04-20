@@ -15,9 +15,13 @@ async function startServer() {
     // Completely disable framing restrictions for maximum ease of use in Telegram
     res.setHeader('Content-Security-Policy', "frame-ancestors *;");
     res.removeHeader('X-Frame-Options');
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    // Explicitly allow origin based on request for better security
+    const origin = req.headers.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     
     if (req.method === 'OPTIONS') {
       res.status(200).end();
