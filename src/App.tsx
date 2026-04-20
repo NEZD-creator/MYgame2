@@ -605,22 +605,23 @@ export default function App() {
 
     // Cloud Sync Throttled (Firestore Quota Protection)
     useEffect(() => {
-        if (!auth.currentUser || auth.currentUser.isAnonymous) return;
+        if (!auth.currentUser || auth.currentUser.isAnonymous || isQuotaExceededRef.current) return;
 
         const syncToCloud = async () => {
             const now = Date.now();
-            if (now - lastSyncTimeRef.current < 60000) return; // Only sync once per minute
+            // Sync every 3 minutes for game progress
+            if (now - cloudSyncCooldownRef.current < 180000) return; 
 
             try {
                 const userRef = doc(db, 'users', auth.currentUser!.uid);
                 await setDoc(userRef, { ...gameState, updatedAt: serverTimestamp() }, { merge: true });
-                lastSyncTimeRef.current = now;
+                cloudSyncCooldownRef.current = now;
             } catch (err) {
                 handleFirestoreError(err, 'WRITE', 'users/' + auth.currentUser!.uid);
             }
         };
 
-        const timer = setTimeout(syncToCloud, 5000); // Wait 5s before first attempt or after change
+        const timer = setTimeout(syncToCloud, 10000); // 10s delay before attempting cloud sync on change
         return () => clearTimeout(timer);
     }, [gameState, auth.currentUser]);
     
@@ -638,8 +639,15 @@ export default function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
+    const isQuotaExceededRef = useRef(false);
+    
     useEffect(() => {
-        const handleCustomError = (e: any) => setAuthError(e.detail);
+        const handleCustomError = (e: any) => {
+            setAuthError(e.detail);
+            if (e.detail?.includes('лимит') || e.detail?.includes('Quota')) {
+                isQuotaExceededRef.current = true;
+            }
+        };
         window.addEventListener('auth-error-trigger', handleCustomError);
         return () => window.removeEventListener('auth-error-trigger', handleCustomError);
     }, []);
@@ -661,6 +669,7 @@ export default function App() {
     const gameStateRef = useRef(gameState);
     const lastSyncTimeRef = useRef(0);
     const lastSyncedStageRef = useRef(0);
+    const cloudSyncCooldownRef = useRef(0);
 
     useEffect(() => {
         // --- Telegram Mini App Initialization ---
@@ -875,7 +884,7 @@ export default function App() {
         const lowerName = playerName.toLowerCase();
         const isAI = lowerName.includes('gemini') || lowerName.includes('ais agent') || lowerName.includes('ais_agent');
 
-        if (shouldSync && !isAI) {
+        if (shouldSync && !isAI && !isQuotaExceededRef.current) {
             const tgInitData = (window as any).Telegram?.WebApp?.initDataUnsafe;
             const telegramUserId = tgInitData?.user?.id?.toString();
             // Use Telegram ID if available, otherwise fallback to Firebase anonymous UID.
