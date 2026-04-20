@@ -12,7 +12,7 @@ export const googleProvider = new GoogleAuthProvider();
 export let isQuotaExceededGlobal = false;
 
 export const handleFirestoreError = (error: any, operation: string, path: string | null) => {
-    const isQuotaError = error.message?.includes('resource-exhausted') || error.message?.includes('Quota exceeded');
+    const isQuotaError = error.code === 'resource-exhausted' || error.message?.includes('resource-exhausted') || error.message?.includes('Quota exceeded');
     
     if (isQuotaError) {
         if (!isQuotaExceededGlobal) {

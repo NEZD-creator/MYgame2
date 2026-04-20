@@ -641,47 +641,89 @@ export default function App() {
     };
 
     // --- Effects ---
-    useEffect(() => { playerNameRef.current = playerName; }, [playerName]);
-    useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+    useEffect(() => { 
+        playerNameRef.current = playerName; 
+    }, [playerName]);
 
-    // Local save is always immediate
-    useEffect(() => {
-        localStorage.setItem('animeSoul_save', JSON.stringify(gameState));
+    useEffect(() => { 
+        gameStateRef.current = gameState; 
+        
+        // Optimized Local Save: Throttled to prevent disk thrashing
+        // We only save locally immediately if it's a significant change (stage/substage)
+        // Otherwise, the periodic save takes care of it.
+        const stageKey = `${gameState.totalKills}_${gameState.subStage}`;
+        const lastStageKey = useRefStageKey.current;
+        if (stageKey !== lastStageKey) {
+            localStorage.setItem('animeSoul_save', JSON.stringify({ ...gameState, lastSaveTime: Date.now() }));
+            useRefStageKey.current = stageKey;
+        }
     }, [gameState]);
 
-    // Cloud Sync Throttled (Firestore Quota Protection)
-    useEffect(() => {
-        if (!auth.currentUser || auth.currentUser.isAnonymous || isQuotaExceededRef.current || isQuotaExceededGlobal) return;
+    // Track stage key for optimized saving
+    const useRefStageKey = useRef('');
 
-        const syncToCloud = async () => {
+    // Consolidated Cloud Sync (Throttled & Debounced)
+    useEffect(() => {
+        // Skip if not logged in or quota is out
+        if (!isAuthReady || !auth.currentUser || auth.currentUser.isAnonymous || isQuotaExceededRef.current || isQuotaExceededGlobal) return;
+
+        const performCloudSync = async () => {
             const now = Date.now();
-            // Sync every 3 minutes for game progress
-            if (now - cloudSyncCooldownRef.current < 180000) return; 
+            const stage = Math.floor(gameStateRef.current.totalKills / 5) + 1;
+            
+            // Strictly enforce cooldowns: 
+            // 3 minutes for general save, or 1 minute if significant progress (stage change)
+            const stageChanged = stage >= lastSyncedStageRef.current + 1;
+            const cooldown = stageChanged ? 60000 : 180000;
+
+            if (now - cloudSyncCooldownRef.current < cooldown) return;
 
             try {
+                if (isQuotaExceededRef.current || isQuotaExceededGlobal) return;
+
+                console.log("Cloud Sync: Synchronizing state to Firestore...");
+                
+                const uid = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || auth.currentUser!.uid;
                 const userRef = doc(db, 'users', auth.currentUser!.uid);
-                await setDoc(userRef, { ...gameState, updatedAt: serverTimestamp() }, { merge: true });
+                const leaderboardRef = doc(db, 'leaderboard', uid);
+
+                const powerScore = (gameStateRef.current.glory * 1000000) + gameStateRef.current.totalKills;
+
+                const leaderboardEntry = {
+                    uid,
+                    username: playerNameRef.current,
+                    stage,
+                    subStage: gameStateRef.current.subStage,
+                    dps: getStaticDps(gameStateRef.current),
+                    glory: gameStateRef.current.glory,
+                    powerScore,
+                    lastUpdated: serverTimestamp()
+                };
+
+                await Promise.all([
+                    setDoc(userRef, { ...gameStateRef.current, updatedAt: serverTimestamp() }, { merge: true }),
+                    setDoc(leaderboardRef, leaderboardEntry, { merge: true })
+                ]);
+
                 cloudSyncCooldownRef.current = now;
+                lastSyncedStageRef.current = stage;
+                lastSyncTimeRef.current = now;
             } catch (err) {
-                handleFirestoreError(err, 'WRITE', 'users/' + auth.currentUser!.uid);
+                handleFirestoreError(err, 'WRITE', 'cloud-sync');
             }
         };
 
-        const timer = setTimeout(syncToCloud, 10000); // 10s delay before attempting cloud sync on change
+        const timer = setTimeout(performCloudSync, 15000); 
         return () => clearTimeout(timer);
-    }, [gameState, auth.currentUser]);
+    }, [gameState.totalKills, gameState.subStage, gameState.glory, isAuthReady, auth.currentUser]);
 
+    // Error handling effect
     useEffect(() => {
         const handleCustomError = (e: any) => {
             setAuthError(e.detail);
             if (e.detail?.includes('лимит') || e.detail?.includes('Quota') || isQuotaExceededGlobal) {
                 isQuotaExceededRef.current = true;
-                try {
-                    disableNetwork(db);
-                    console.log("Firestore network disabled due to quota exhaustion.");
-                } catch(err) {
-                    console.error("Failed to disable network", err);
-                }
+                disableNetwork(db).catch(() => {});
             }
         };
         window.addEventListener('auth-error-trigger', handleCustomError);
@@ -783,6 +825,33 @@ export default function App() {
 
         window.addEventListener('contextmenu', handleContextMenu);
         window.addEventListener('keydown', handleKeyDown);
+
+        // --- Offline Progress Calculation ---
+        const calculateOfflineProgress = () => {
+            try {
+                const saved = localStorage.getItem('animeSoul_save');
+                if (!saved) return;
+                const rawData = saved.startsWith('{') ? saved : decodeURIComponent(atob(saved));
+                const parsed = JSON.parse(rawData);
+                if (parsed.lastSaveTime > 0) {
+                    const diff = (Date.now() - parsed.lastSaveTime) / 1000;
+                    if (diff > 60) {
+                        const dps = getStaticDps(parsed);
+                        if (dps > 0) {
+                            const efficiency = parsed.arts[6]?.owned ? 0.3 : 0.15; // Artifact bonus
+                            const offlineGold = Math.floor(dps * diff * efficiency);
+                            if (offlineGold > 0) {
+                                setGameState(prev => ({ ...prev, gold: prev.gold + offlineGold }));
+                                setTimeout(() => {
+                                    (window as any).Telegram?.WebApp?.showAlert?.(`С возвращением! Добыто ${format(offlineGold)} золота за ${Math.floor(diff/60)} мин.`);
+                                }, 1500);
+                            }
+                        }
+                    }
+                }
+            } catch (e) { console.error("Offline calc err", e); }
+        };
+        calculateOfflineProgress();
 
         // --- Firebase Auth & Leaderboard ---
         const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
@@ -894,112 +963,12 @@ export default function App() {
         };
     }, []);
 
-    // Push score to Firestore
-    useEffect(() => {
-        if (!isAuthReady || !auth.currentUser) return;
-
-        const stage = Math.floor(gameState.totalKills / 5) + 1;
-        const now = Date.now();
-
-        // Sync if:
-        // 1. First time sync (lastSyncTimeRef === 0)
-        // 2. Stage increased significantly (every 5 stages)
-        // 3. 5 minutes passed
-        const shouldSync = 
-            lastSyncTimeRef.current === 0 || 
-            (stage >= lastSyncedStageRef.current + 5) || 
-            (now - lastSyncTimeRef.current > 300000);
-
-        const lowerName = playerName.toLowerCase();
-        const isAI = lowerName.includes('gemini') || lowerName.includes('ais agent') || lowerName.includes('ais_agent');
-
-        if (shouldSync && !isAI && !isQuotaExceededRef.current && !isQuotaExceededGlobal) {
-            const tgInitData = (window as any).Telegram?.WebApp?.initDataUnsafe;
-            const telegramUserId = tgInitData?.user?.id?.toString();
-            // Use Telegram ID if available, otherwise fallback to Firebase anonymous UID.
-            // This ensures cross-device tracking for the same Telegram account.
-            const uid = telegramUserId || auth.currentUser.uid;
-            
-            // powerScore takes into account glory (major) and kills (minor) to ensure prestige always moves you up
-            const powerScore = (gameState.glory * 1000000) + gameState.totalKills;
-            
-            const entry = {
-                uid,
-                tgId: telegramUserId || null,
-                username: playerName,
-                stage,
-                subStage: gameState.subStage,
-                dps: getStaticDps(gameState),
-                glory: gameState.glory,
-                powerScore,
-                lastUpdated: serverTimestamp()
-            };
-
-            setDoc(doc(db, 'leaderboard', uid), entry, { merge: true })
-                .then(() => {
-                    lastSyncTimeRef.current = now;
-                    lastSyncedStageRef.current = stage;
-                })
-                .catch(err => handleFirestoreError(err, 'WRITE', 'leaderboard/' + uid));
-        }
-    }, [gameState.totalKills, isAuthReady, playerName, gameState.subStage]);
-
     const saveState = (state: GameState) => {
         try {
             const dataToSave = { ...state, lastSaveTime: Date.now(), username: playerNameRef.current };
-            const json = JSON.stringify(dataToSave);
-            // Simple obfuscation to prevent casual localstorage editing
-            const obfuscated = btoa(encodeURIComponent(json));
-            localStorage.setItem('animeSoul_save', obfuscated);
-            
-            // Sync with Telegram CloudStorage disabled due to 512b data limit (DATA_TOO_LONG errors)
-        } catch (e) {
-            console.error("Save error", e);
-        }
+            localStorage.setItem('animeSoul_save', JSON.stringify(dataToSave));
+        } catch (e) {}
     };
-
-    useEffect(() => {
-        // Periodic background save
-        const saveInterval = setInterval(() => {
-            saveState(gameStateRef.current);
-        }, 10000);
-        return () => clearInterval(saveInterval);
-    }, []);
-
-    useEffect(() => {
-        const saved = localStorage.getItem('animeSoul_save');
-        if (saved) {
-            try {
-                const rawData = decodeURIComponent(atob(saved));
-                const parsed = JSON.parse(rawData);
-                if (parsed.username) setPlayerName(parsed.username);
-                
-                // Offline progress calculation
-                if (parsed.lastSaveTime > 0) {
-                    const diff = (Date.now() - parsed.lastSaveTime) / 1000;
-                    if (diff > 60) {
-                        const dps = getStaticDps(parsed);
-                        if (dps > 0) {
-                            const offlineGold = Math.floor(dps * diff * 0.15); // 15% offline efficiency
-                            if (offlineGold > 0) {
-                                setGameState(prev => ({ ...prev, gold: prev.gold + offlineGold }));
-                                setTimeout(() => {
-                                    const tg = (window as any).Telegram?.WebApp;
-                                    tg?.showAlert?.(`С возвращением! Ваши наемники добыли ${format(offlineGold)} золота за ${Math.floor(diff/60)} мин. отсутствия.`);
-                                }, 1500);
-                            }
-                        }
-                    }
-                }
-            } catch (e) {}
-        }
-    }, []);
-
-    useEffect(() => {
-        gameStateRef.current = gameState;
-        // Immediate local save on important changes
-        localStorage.setItem('animeSoul_save', JSON.stringify({ ...gameState, lastSaveTime: Date.now() }));
-    }, [gameState]);
 
     useEffect(() => {
         const interval = setInterval(() => {
