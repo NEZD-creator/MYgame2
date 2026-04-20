@@ -44,6 +44,9 @@ async function startServer() {
     const host = req.headers['x-forwarded-host'] || req.get('host');
     const fullUrl = `${protocol}://${host}`;
     
+    // Explicit CORS headers for this specific file
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
     res.json({
       url: fullUrl,
       name: "Isekai Quest",
