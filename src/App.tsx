@@ -614,22 +614,25 @@ export default function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [currentUser, setCurrentUser] = useState<any>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [adminActiveTab, setAdminActiveTab] = useState<'resources' | 'users' | 'system'>('resources');
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const [isCleaning, setIsCleaning] = useState(false);
-    const isAdmin = auth.currentUser?.email === 'nevmovenko2004@gmail.com';
+    const isAdmin = currentUser?.email === 'nevmovenko2004@gmail.com';
 
     const fetchAllUsers = async () => {
         if (!isAdmin || isLoadingUsers) return;
         setIsLoadingUsers(true);
         try {
-            const snapshot = await getDocs(query(collection(db, 'users'), limit(50), orderBy('updatedAt', 'desc')));
+            // Simplified query to avoid index issues or missing field filtering
+            const snapshot = await getDocs(query(collection(db, 'users'), limit(100)));
             setAllUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
         } catch (err) {
             console.error("Fetch users error", err);
+            (window as any).Telegram?.WebApp?.showAlert?.("Ошибка загрузки пользователей. Возможно, исчерпан лимит или нет прав.");
         } finally {
             setIsLoadingUsers(false);
         }
@@ -698,13 +701,17 @@ export default function App() {
     };
 
     const globalLeaderboardCleanup = async () => {
-        if (!isAdmin || isCleaning || isQuotaExceededGlobal) return;
+        if (!isAdmin || isCleaning) return;
         
         setIsCleaning(true);
         const tg = (window as any).Telegram?.WebApp;
         
         try {
             console.log("Admin Global Cleanup starting...");
+            // Force re-enable network for admin if it was disabled by quota, to attempt cleanup
+            const { enableNetwork } = await import('firebase/firestore');
+            await enableNetwork(db).catch(() => {});
+
             const snapshot = await getDocs(collection(db, 'leaderboard'));
             const uniqueUsers = new Map();
             const toDelete: string[] = [];
@@ -1022,6 +1029,7 @@ export default function App() {
 
     // --- Firebase Auth & Leaderboard ---
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+        setCurrentUser(user);
         if (!isAuthReady) setIsAuthReady(true);
         
         if (user) {
