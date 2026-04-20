@@ -597,18 +597,31 @@ export default function App() {
         return spawnMonster(INITIAL_STATE);
     });
 
+    // --- Save Game State ---
     useEffect(() => {
-        if (auth.currentUser) {
-            // Sync to Firestore
-            const saveToFirebase = async () => {
-                 const userRef = doc(db, 'users', auth.currentUser!.uid);
-                 await setDoc(userRef, { ...gameState, updatedAt: serverTimestamp() }, { merge: true });
-            };
-            saveToFirebase();
-        } else {
-            // Local save
-            localStorage.setItem('animeSoul_save', JSON.stringify(gameState));
-        }
+        // Local save is always immediate
+        localStorage.setItem('animeSoul_save', JSON.stringify(gameState));
+    }, [gameState]);
+
+    // Cloud Sync Throttled (Firestore Quota Protection)
+    useEffect(() => {
+        if (!auth.currentUser || auth.currentUser.isAnonymous) return;
+
+        const syncToCloud = async () => {
+            const now = Date.now();
+            if (now - lastSyncTimeRef.current < 60000) return; // Only sync once per minute
+
+            try {
+                const userRef = doc(db, 'users', auth.currentUser!.uid);
+                await setDoc(userRef, { ...gameState, updatedAt: serverTimestamp() }, { merge: true });
+                lastSyncTimeRef.current = now;
+            } catch (err) {
+                handleFirestoreError(err, 'WRITE', 'users/' + auth.currentUser!.uid);
+            }
+        };
+
+        const timer = setTimeout(syncToCloud, 5000); // Wait 5s before first attempt or after change
+        return () => clearTimeout(timer);
     }, [gameState, auth.currentUser]);
     
     const [activeTab, setActiveTab] = useState('team');
@@ -625,6 +638,12 @@ export default function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
+    useEffect(() => {
+        const handleCustomError = (e: any) => setAuthError(e.detail);
+        window.addEventListener('auth-error-trigger', handleCustomError);
+        return () => window.removeEventListener('auth-error-trigger', handleCustomError);
+    }, []);
+
     useEffect(() => {
         if (authError) {
             const timer = setTimeout(() => setAuthError(null), 8000);
@@ -731,25 +750,9 @@ export default function App() {
         window.addEventListener('keydown', handleKeyDown);
 
         // --- Firebase Auth & Leaderboard ---
-        const initAuth = async () => {
-            // Wait for auth to initialize from persistence
-            if (auth.currentUser) return; 
-            
-            try {
-                await signInAnonymously(auth);
-            } catch (err: any) {
-                if (err.code === 'auth/admin-restricted-operation') {
-                    setAuthError("Anonymous auth is disabled in Firebase Console. Leaderboard won't work.");
-                } else {
-                    setAuthError("Auth error: " + err.message);
-                }
-                console.error("Auth fail", err);
-            }
-        };
-        initAuth();
-
         const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-            setIsAuthReady(true);
+            if (!isAuthReady) setIsAuthReady(true);
+            
             if (user) {
                 setAuthError(null);
                 setPlayerName(prev => {
@@ -763,18 +766,23 @@ export default function App() {
                     const userDoc = await getDoc(doc(db, 'users', user.uid));
                     if (userDoc.exists()) {
                         const cloudData = userDoc.data();
-                        // Only load if it has essential game data
                         if (cloudData.gold !== undefined) {
-                            console.log("Cloud save found, merging...");
                             setGameState(prev => ({
                                 ...prev,
                                 ...cloudData,
-                                updatedAt: undefined // don't store the server side timestamp object in local state
+                                updatedAt: undefined 
                             }));
                         }
                     }
                 } catch (err) {
                     console.error("Cloud load error:", err);
+                }
+            } else {
+                // No user at all (first time or logged out) - only then sign in anonymously
+                try {
+                    await signInAnonymously(auth);
+                } catch (err: any) {
+                    console.error("Auto-anon signin failed", err);
                 }
             }
         });
@@ -857,13 +865,12 @@ export default function App() {
 
         // Sync if:
         // 1. First time sync (lastSyncTimeRef === 0)
-        // 2. Stage increased
-        // 3. 60 seconds passed
-        
+        // 2. Stage increased significantly (every 5 stages)
+        // 3. 5 minutes passed
         const shouldSync = 
             lastSyncTimeRef.current === 0 || 
-            stage > lastSyncedStageRef.current || 
-            (now - lastSyncTimeRef.current > 60000);
+            (stage >= lastSyncedStageRef.current + 5) || 
+            (now - lastSyncTimeRef.current > 300000);
 
         const lowerName = playerName.toLowerCase();
         const isAI = lowerName.includes('gemini') || lowerName.includes('ais agent') || lowerName.includes('ais_agent');
@@ -1987,16 +1994,20 @@ export default function App() {
 
                                     <button 
                                         onClick={handleGoogleSignIn} 
-                                        disabled={auth.currentUser && !auth.currentUser.isAnonymous}
+                                        disabled={!isAuthReady || (auth.currentUser && !auth.currentUser.isAnonymous)}
                                         className={`p-2 rounded w-full mt-2 font-black uppercase text-xs transition-all ${
-                                            auth.currentUser && !auth.currentUser.isAnonymous 
-                                            ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50' 
-                                            : 'bg-blue-600 text-white hover:bg-blue-500 active:scale-95'
+                                            !isAuthReady 
+                                            ? 'bg-zinc-800 text-zinc-600 cursor-wait'
+                                            : (auth.currentUser && !auth.currentUser.isAnonymous) 
+                                                ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50' 
+                                                : 'bg-blue-600 text-white hover:bg-blue-500 active:scale-95'
                                         }`}
                                     >
-                                        {auth.currentUser && !auth.currentUser.isAnonymous 
-                                            ? 'Аккаунт привязан' 
-                                            : 'Привязать Google Аккаунт'}
+                                        {!isAuthReady 
+                                            ? 'Загрузка...' 
+                                            : (auth.currentUser && !auth.currentUser.isAnonymous) 
+                                                ? 'Аккаунт привязан' 
+                                                : 'Привязать Google Аккаунт'}
                                     </button>
 
                                     {auth.currentUser ? (

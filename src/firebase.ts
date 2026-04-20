@@ -10,8 +10,10 @@ export const googleProvider = new GoogleAuthProvider();
 
 // Test connection and error handling
 export const handleFirestoreError = (error: any, operation: string, path: string | null) => {
+    const isQuotaError = error.message?.includes('resource-exhausted') || error.message?.includes('Quota exceeded');
+    
     const errInfo = {
-        error: error.message || String(error),
+        error: isQuotaError ? "Дневной лимит базы данных исчерпан. Пожалуйста, попробуйте завтра." : (error.message || String(error)),
         operation,
         path,
         auth: {
@@ -19,7 +21,16 @@ export const handleFirestoreError = (error: any, operation: string, path: string
             isAnonymous: auth.currentUser?.isAnonymous
         }
     };
-    console.error("Firestore Error:", JSON.stringify(errInfo));
+    
+    if (isQuotaError) {
+        console.error("Firebase Quota Error: Daily limit reached.");
+        // Custom event so App.tsx can show it
+        window.dispatchEvent(new CustomEvent('auth-error-trigger', { detail: errInfo.error }));
+    } else {
+        console.error("Firestore Error:", JSON.stringify(errInfo));
+    }
+    
+    return errInfo.error;
 };
 
 async function testConnection() {
