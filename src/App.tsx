@@ -33,9 +33,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Coins, Gem, Sparkles, Users, Sword, Zap, ShoppingBag, Skull, Trophy, ArrowRight, ChevronUp, ChevronDown, Share, Wallet, Star, Settings, Check, X, RotateCcw } from 'lucide-react';
 import { useTonConnectUI } from '@tonconnect/ui-react';
+import { SocialSystem } from './SocialSystem';
 
-import { auth, db, signInAnonymously, signOut, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, updateDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider, isQuotaExceededGlobal } from './firebase';
-import { disableNetwork, getDocs } from 'firebase/firestore';
+import { auth, db, signInAnonymously, signOut, onAuthStateChanged, collection, query, orderBy, limit, onSnapshot, doc, setDoc, deleteDoc, updateDoc, serverTimestamp, handleFirestoreError, signInWithPopup, googleProvider, isQuotaExceededGlobal, where, getDocs } from './firebase';
+import { disableNetwork, runTransaction, getDoc } from 'firebase/firestore';
 
 type GameState = {
     gold: number;
@@ -280,7 +281,7 @@ function generateGuestName(uid: string) {
     return `Guest #${num}`;
 }
 
-const TABS = [
+const TABS: { id: 'team' | 'hero' | 'skills' | 'shop' | 'arts' | 'donate' | 'leaderboard' | 'prestige' | 'mercs' | 'social', label: string, icon: any }[] = [
     { id: 'team', label: 'Команда', icon: Users },
     { id: 'hero', label: 'Протагонист', icon: Sword },
     { id: 'skills', label: 'Навыки', icon: Zap },
@@ -602,7 +603,7 @@ export default function App() {
         return spawnMonster(INITIAL_STATE);
     });
 
-    const [activeTab, setActiveTab] = useState('team');
+    const [activeTab, setActiveTab] = useState<'mercs' | 'hero' | 'arts' | 'shop' | 'leaderboard' | 'social' | 'team' | 'skills' | 'prestige' | 'donate'>('mercs');
     const [tonConnectUI] = useTonConnectUI();
     const [damagePopups, setDamagePopups] = useState<{id: number, val: number, x: number, y: number, isCrit: boolean}[]>([]);
     const [lastActiveDps, setLastActiveDps] = useState(0);
@@ -613,9 +614,15 @@ export default function App() {
     const [userRank, setUserRank] = useState<number | null>(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
+    const [isSocialOpen, setIsSocialOpen] = useState(false);
+    const [activeDungeon, setActiveDungeon] = useState<any>(null);
+    const [isUpdatingName, setIsUpdatingName] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isQuotaExceededGlobal, setIsQuotaExceededGlobal] = useState(false);
+    
+    // Admin State Restoration
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [adminActiveTab, setAdminActiveTab] = useState<'resources' | 'users' | 'system'>('resources');
     const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -849,20 +856,7 @@ export default function App() {
 
     useEffect(() => { 
         gameStateRef.current = gameState; 
-        
-        // Optimized Local Save: Throttled to prevent disk thrashing
-        // We only save locally immediately if it's a significant change (stage/substage)
-        // Otherwise, the periodic save takes care of it.
-        const stageKey = `${gameState.totalKills}_${gameState.subStage}`;
-        const lastStageKey = useRefStageKey.current;
-        if (stageKey !== lastStageKey) {
-            localStorage.setItem('animeSoul_save', JSON.stringify({ ...gameState, lastSaveTime: Date.now() }));
-            useRefStageKey.current = stageKey;
-        }
     }, [gameState]);
-
-    // Track stage key for optimized saving
-    const useRefStageKey = useRef('');
 
     // --- Identity Helper ---
     const getIdentityId = () => {
@@ -957,250 +951,166 @@ export default function App() {
         return () => window.removeEventListener('auth-error-trigger', handleCustomError);
     }, []);
 
-    useEffect(() => {
-        if (authError) {
-            const timer = setTimeout(() => setAuthError(null), 8000);
-            return () => clearTimeout(timer);
-        }
-    }, [authError]);
 
 
     useEffect(() => {
-        // --- Telegram Mini App Initialization ---
-        try {
-            const tg = (window as any).Telegram?.WebApp;
-            if (tg) {
-                try { tg.ready(); } catch(e) {}
-                try { tg.expand(); } catch(e) {}
-                
-                // Get player name from Telegram
-                const tgUser = tg.initDataUnsafe?.user;
-                if (tgUser) {
-                    const name = tgUser.username || `${tgUser.first_name} ${tgUser.last_name}`.trim();
-                    if (name) setPlayerName(name);
-                }
-
-                // Sync with Telegram Theme
-                const updateTheme = () => {
-                    try {
-                        if (tg.backgroundColor) document.body.style.backgroundColor = tg.backgroundColor;
-                        if (tg.colorScheme === 'dark') {
-                            document.documentElement.classList.add('dark');
-                        } else {
-                            document.documentElement.classList.remove('dark');
-                        }
-                    } catch(e) {}
-                };
-                try {
-                    tg.onEvent('themeChanged', updateTheme);
-                    updateTheme();
-                } catch(e) {}
-
-                // Load from CloudStorage if supported (v6.9+) - Disabled due to DATA_TOO_LONG errors
-                
-                // --- NEW SYNC LOGIC: Migrate localStorage to Firebase ---
-                const migrateSave = async () => {
-                    if (isQuotaExceededRef.current || isQuotaExceededGlobal) return;
-                    const saved = localStorage.getItem('animeSoul_save');
-                    if (saved) {
-                        try {
-                            const tgUser = tg.initDataUnsafe?.user;
-                            if (tgUser && tgUser.id) {
-                                const saveDocRef = doc(db, 'saves', tgUser.id.toString());
-                                const rawData = saved.startsWith('{') ? saved : decodeURIComponent(atob(saved));
-                                await setDoc(saveDocRef, JSON.parse(rawData));
-                                localStorage.removeItem('animeSoul_save'); // Clear after migration
-                                console.log("Save migrated to Firebase");
-                            }
-                        } catch (e) {
-                            handleFirestoreError(e, 'WRITE', 'migration');
-                        }
-                    }
-                };
-                migrateSave();
-            }
-        } catch (e) {
-            console.error("TG Init suppressed error", e);
-        }
-
-        console.clear();
-        console.log("%cANIMESOUL %cSECURITY %cACTIVE", 
-            "color: red; font-size: 24px; font-weight: bold;", 
-            "color: white; font-size: 24px; font-weight: bold; background: red; padding: 0 4px;",
-            "color: green; font-size: 24px; font-weight: bold;");
-        console.log("Protection layers loaded. Unauthorized access is prohibited.");
-        
-        // --- Security measures: Anti-theft and Anti-hack ---
-        
-        // 1. Disable Right Click
-        const handleContextMenu = (e: MouseEvent) => {
-            e.preventDefault();
-        };
-
-        // 2. Disable common DevTool shortcuts
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (
-                e.key === 'F12' || 
-                (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
-                (e.ctrlKey && e.key === 'u') ||
-                (e.ctrlKey && e.key === 's')
-            ) {
-                e.preventDefault();
-                return false;
-            }
-        };
-
-        window.addEventListener('contextmenu', handleContextMenu);
-        window.addEventListener('keydown', handleKeyDown);
-
-        // --- Offline Progress Calculation ---
-        const calculateOfflineProgress = () => {
-            try {
-                const saved = localStorage.getItem('animeSoul_save');
-                if (!saved) return;
-                const rawData = saved.startsWith('{') ? saved : decodeURIComponent(atob(saved));
-                const parsed = JSON.parse(rawData);
-                if (parsed.lastSaveTime > 0) {
-                    const diff = (Date.now() - parsed.lastSaveTime) / 1000;
-                    if (diff > 60) {
-                        const dps = getStaticDps(parsed);
-                        if (dps > 0) {
-                            const efficiency = parsed.arts[6]?.owned ? 0.3 : 0.15; // Artifact bonus
-                            const offlineGold = Math.floor(dps * diff * efficiency);
-                            if (offlineGold > 0) {
-                                setGameState(prev => ({ ...prev, gold: prev.gold + offlineGold }));
-                                setTimeout(() => {
-                                    (window as any).Telegram?.WebApp?.showAlert?.(`С возвращением! Добыто ${format(offlineGold)} золота за ${Math.floor(diff/60)} мин.`);
-                                }, 1500);
-                            }
-                        }
-                    }
-                }
-            } catch (e) { console.error("Offline calc err", e); }
-        };
-        calculateOfflineProgress();
-
-    // --- Firebase Auth & Leaderboard ---
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-        setCurrentUser(user);
-        if (!isAuthReady) setIsAuthReady(true);
-        
-        if (user) {
-            setAuthError(null);
+        // --- Firebase Auth & Leaderboard ---
+        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+            setCurrentUser(user);
+            if (!isAuthReady) setIsAuthReady(true);
             
-            const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
-            const platformId = tgUser?.id ? `tg_${tgUser.id}` : null;
-            const googleUid = !user.isAnonymous ? user.uid : null;
-            const identityId = googleUid || platformId || user.uid;
-
-            setPlayerName(prev => {
-                if (prev === 'Аноним') return generateGuestName(platformId || user.uid);
-                return prev;
-            });
-
-            // --- Robust Multi-Account Loading & Linking ---
-            try {
-                const { getDoc, setDoc } = await import('firebase/firestore');
+            if (user) {
+                setAuthError(null);
                 
-                // 1. Try to load from Google identity if available
-                let cloudDoc = null;
-                if (googleUid) cloudDoc = await getDoc(doc(db, 'users', googleUid));
-                
-                // 2. Try to load from Telegram identity if available
-                let tgDoc = null;
-                if (platformId && platformId !== googleUid) tgDoc = await getDoc(doc(db, 'users', platformId));
+                const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+                const platformId = tgUser?.id ? `tg_${tgUser.id}` : null;
+                const googleUid = !user.isAnonymous ? user.uid : null;
+                const identityId = googleUid || platformId || user.uid;
 
-                const cloudData = cloudDoc?.exists() ? cloudDoc.data() : null;
-                const tgData = tgDoc?.exists() ? tgDoc.data() : null;
+                setPlayerName(prev => {
+                    if (prev === 'Аноним') return generateGuestName(platformId || user.uid);
+                    return prev;
+                });
 
-                // Determine which save is better (higher glory or more kills)
-                const getPower = (d: any) => d ? (d.glory * 1000000 + d.totalKills) : -1;
-                const mainData = getPower(cloudData) >= getPower(tgData) ? cloudData : tgData;
+                // --- Robust Multi-Account Loading & Linking ---
+                try {
+                    const { getDoc, setDoc } = await import('firebase/firestore');
+                    
+                    // 1. Try to load from Google identity if available
+                    let cloudDoc = null;
+                    if (googleUid) cloudDoc = await getDoc(doc(db, 'users', googleUid));
+                    
+                    // 2. Try to load from Telegram identity if available
+                    let tgDoc = null;
+                    if (platformId && platformId !== googleUid) tgDoc = await getDoc(doc(db, 'users', platformId));
 
-                if (mainData && mainData.gold !== undefined) {
-                    setGameState(prev => ({
-                        ...prev,
-                        ...mainData,
-                        tgId: tgUser?.id || mainData.tgId || null,
-                        googleUid: googleUid || mainData.googleUid || null,
-                        updatedAt: undefined 
-                    }));
+                    const cloudData = cloudDoc?.exists() ? cloudDoc.data() : null;
+                    const tgData = tgDoc?.exists() ? tgDoc.data() : null;
 
-                    // LINKING: If we are on Google and have better data from TG, or vice versa, sync them.
-                    if (googleUid && mainData === tgData && !isQuotaExceededRef.current && !isQuotaExceededGlobal) {
-                        console.log("Linking Telegram progress to Google account...");
-                        await setDoc(doc(db, 'users', googleUid), { ...mainData, googleUid, tgId: tgUser?.id || null }, { merge: true });
+                    // Determine which save is better (higher glory or more kills)
+                    const getPower = (d: any) => d ? (d.glory * 1000000 + d.totalKills) : -1;
+                    const mainData = getPower(cloudData) >= getPower(tgData) ? cloudData : tgData;
+
+                    if (mainData && mainData.gold !== undefined) {
+                        setGameState(prev => ({
+                            ...prev,
+                            ...mainData,
+                            tgId: tgUser?.id || mainData.tgId || null,
+                            googleUid: googleUid || mainData.googleUid || null,
+                            updatedAt: undefined 
+                        }));
+
+                        // LINKING: If we are on Google and have better data from TG, or vice versa, sync them.
+                        if (googleUid && mainData === tgData && !isQuotaExceededRef.current && !isQuotaExceededGlobal) {
+                            console.log("Linking Telegram progress to Google account...");
+                            await setDoc(doc(db, 'users', googleUid), { ...mainData, googleUid, tgId: tgUser?.id || null }, { merge: true });
+                        }
                     }
+                } catch (err) {
+                    console.error("Cloud load error:", err);
                 }
-            } catch (err) {
-                console.error("Cloud load error:", err);
-            }
-        } else {
-            try {
-                await signInAnonymously(auth);
-            } catch (err: any) {
-                console.error("Auto-anon signin failed", err);
-            }
-        }
-    });
-
-    const q = query(collection(db, 'leaderboard'), orderBy('powerScore', 'desc'), limit(100));
-    const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
-        const rawData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        
-        // Unified Ranking: Group by human identity (TG ID or Google UID)
-        const uniqueUsers = new Map();
-
-        rawData.forEach((entry: any) => {
-            const name = (entry.username || 'Аноним').toLowerCase();
-            const isAI = name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
-            if (isAI) return;
-
-            // Decision: What is the most stable unique key for this entry?
-            // Prioritize TG ID, then Auth UID.
-            const uniqueKey = entry.tgId ? `tg_${entry.tgId}` : entry.uid;
-
-            if (!uniqueUsers.has(uniqueKey) || uniqueUsers.get(uniqueKey).powerScore < entry.powerScore) {
-                uniqueUsers.set(uniqueKey, entry);
+            } else {
+                try {
+                    await signInAnonymously(auth);
+                } catch (err: any) {
+                    console.error("Auto-anon signin failed", err);
+                }
             }
         });
 
-        const sortedList = Array.from(uniqueUsers.values())
-            .sort((a, b) => b.powerScore - a.powerScore);
+        const q = query(collection(db, 'leaderboard'), orderBy('powerScore', 'desc'), limit(100));
+        const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
+            const rawData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            
+            // Unified Ranking: Group by human identity (TG ID or Google UID)
+            const uniqueUsers = new Map();
 
-        setLeaderboard(sortedList.slice(0, 15));
-        setIsLoadingLeaderboard(false);
-        
-        if (auth.currentUser) {
-            const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
-            const currentIdentity = auth.currentUser.isAnonymous && tgUser?.id ? `tg_${tgUser.id}` : auth.currentUser.uid;
+            rawData.forEach((entry: any) => {
+                const name = (entry.username || 'Аноним').toLowerCase();
+                const isAI = name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
+                if (isAI) return;
+
+                // Decision: What is the most stable unique key for this entry?
+                // Prioritize TG ID, then Auth UID.
+                const uniqueKey = entry.tgId ? `tg_${entry.tgId}` : entry.uid;
+
+                if (!uniqueUsers.has(uniqueKey) || uniqueUsers.get(uniqueKey).powerScore < entry.powerScore) {
+                    uniqueUsers.set(uniqueKey, entry);
+                }
+            });
+
+            const sortedList = Array.from(uniqueUsers.values())
+                .sort((a, b) => b.powerScore - a.powerScore);
+
+            setLeaderboard(sortedList.slice(0, 15));
+            setIsLoadingLeaderboard(false);
             
-            let myRank = sortedList.findIndex((d: any) => 
-                (d.uid === auth.currentUser?.uid) || 
-                (tgUser?.id && d.tgId == tgUser.id)
-            );
-            
-            if (myRank !== -1) setUserRank(myRank + 1);
-            else setUserRank(null);
-        }
-    }, (err) => {
-        setIsLoadingLeaderboard(false);
-        handleFirestoreError(err, 'LIST', 'leaderboard');
-    });
+            if (auth.currentUser) {
+                const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+                
+                let myRank = sortedList.findIndex((d: any) => 
+                    (d.uid === auth.currentUser?.uid) || 
+                    (tgUser?.id && d.tgId == tgUser.id)
+                );
+                
+                if (myRank !== -1) setUserRank(myRank + 1);
+                else setUserRank(null);
+            }
+        }, (err) => {
+            setIsLoadingLeaderboard(false);
+            handleFirestoreError(err, 'LIST', 'leaderboard');
+        });
 
         return () => {
-            window.removeEventListener('contextmenu', handleContextMenu);
-            window.removeEventListener('keydown', handleKeyDown);
             unsubscribeAuth();
             unsubscribeLeaderboard();
         };
     }, []);
 
-    const saveState = (state: GameState) => {
-        try {
-            const dataToSave = { ...state, lastSaveTime: Date.now(), username: playerNameRef.current };
-            localStorage.setItem('animeSoul_save', JSON.stringify(dataToSave));
-        } catch (e) {}
+    // Listen to active dungeon if invited/joined
+    useEffect(() => {
+        const idId = getIdentityId();
+        if (!idId) return;
+        
+        // Listen for dungeon invitations/active sessions
+        const q = query(collection(db, 'dungeons'), where('status', '==', 'active'));
+        const unsub = onSnapshot(q, (snap) => {
+            const myDungeon = snap.docs.find(d => d.data().hostId === idId || d.data().guestId === idId);
+            if (myDungeon) {
+                setActiveDungeon({ id: myDungeon.id, ...myDungeon.data() });
+            } else {
+                setActiveDungeon(null);
+            }
+        });
+        return () => unsub();
+    }, [currentUser]);
+
+    const checkNicknameUnique = async (name: string) => {
+        const docRef = doc(db, 'nicknames', name.toLowerCase().trim());
+        const snap = await getDoc(docRef);
+        return !snap.exists();
+    };
+
+    const updateNickname = async (name: string) => {
+        const identityId = getIdentityId();
+        if (!identityId) return;
+        const cleanName = name.trim();
+        if (cleanName.length < 3 || cleanName.length > 20) {
+            throw new Error("Никнейм должен быть от 3 до 20 символов");
+        }
+        
+        const isUnique = await checkNicknameUnique(cleanName);
+        if (!isUnique) throw new Error("Этот никнейм уже занят");
+
+        // Use transaction to set nickname index and update user profile
+        await runTransaction(db, async (transaction) => {
+            const nickRef = doc(db, 'nicknames', cleanName.toLowerCase());
+            const userRef = doc(db, 'users', identityId);
+            
+            transaction.set(nickRef, { uid: identityId });
+            transaction.update(userRef, { username: cleanName });
+        });
+        setPlayerName(cleanName);
     };
 
     useEffect(() => {
@@ -2110,6 +2020,16 @@ export default function App() {
                                         <Settings size={14} className="lg:w-4 lg:h-4"/>
                                     </div>
                                 </button>
+
+                                <button 
+                                    onClick={() => setIsSocialOpen(true)}
+                                    className="flex flex-col items-center lg:items-end text-red-500 hover:text-red-400 transition-colors bg-red-500/5 px-3 py-1 rounded-xl border border-red-500/10"
+                                >
+                                    <span className="text-[8px] lg:text-[10px] font-black anime-header">Social</span>
+                                    <div className="text-lg lg:text-2xl font-display flex items-center gap-1 lg:gap-2">
+                                        <Users size={14} className="lg:w-4 lg:h-4"/>
+                                    </div>
+                                </button>
                     </div>
                 </div>
 
@@ -2258,7 +2178,7 @@ export default function App() {
 
                                 <div className="flex flex-col gap-4">
                                     <div className="flex flex-col gap-2">
-                                        <label className="text-xs font-black text-zinc-400 uppercase ml-2">Имя Игрока</label>
+                                        <label className="text-xs font-black text-zinc-400 uppercase ml-2">Имя Игрока (Уникальное)</label>
                                         <div className="relative">
                                             <input 
                                                 type="text" 
@@ -2268,17 +2188,26 @@ export default function App() {
                                                 placeholder="Введите имя..."
                                             />
                                             <button 
-                                                onClick={() => {
-                                                    if (newName.trim()) {
-                                                        setPlayerName(newName.trim());
-                                                        (window as any).Telegram?.WebApp?.showAlert?.("Имя успешно изменено!");
+                                                disabled={isUpdatingName}
+                                                onClick={async () => {
+                                                    if (newName.trim() && newName !== playerName) {
+                                                        setIsUpdatingName(true);
+                                                        try {
+                                                            await updateNickname(newName);
+                                                            (window as any).Telegram?.WebApp?.showAlert?.("Никнейм успешно зарезервирован!");
+                                                        } catch (err: any) {
+                                                            (window as any).Telegram?.WebApp?.showAlert?.(err.message || "Ошибка смены имени");
+                                                        } finally {
+                                                            setIsUpdatingName(false);
+                                                        }
                                                     }
                                                 }}
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center text-white"
+                                                className={`absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 ${isUpdatingName ? 'bg-zinc-800' : 'bg-red-600'} rounded-xl flex items-center justify-center text-white`}
                                             >
-                                                <Check size={16} />
+                                                {isUpdatingName ? <Sparkles className="animate-spin" size={16} /> : <Check size={16} />}
                                             </button>
                                         </div>
+                                        <p className="text-[8px] text-zinc-600 px-2 uppercase font-bold italic tracking-widest">Имя можно сменить только если оно свободно</p>
                                     </div>
 
                                     <button 
@@ -2560,6 +2489,16 @@ export default function App() {
                                 )}
                             </motion.div>
                         </motion.div>
+                    )}
+                </AnimatePresence>
+                <AnimatePresence>
+                    {isSocialOpen && (
+                        <SocialSystem 
+                            uid={getIdentityId() || ''}
+                            username={playerName}
+                            playerData={gameState}
+                            onClose={() => setIsSocialOpen(false)}
+                        />
                     )}
                 </AnimatePresence>
             </main>

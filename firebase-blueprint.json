@@ -17,7 +17,7 @@
     },
     "UserSync": {
       "title": "User Sync Data",
-      "description": "Stored game state for a user",
+      "description": "Stored game state and profile for a user",
       "type": "object",
       "properties": {
         "gold": { "type": "number" },
@@ -25,6 +25,40 @@
         "crystals": { "type": "number" },
         "glory": { "type": "number" },
         "totalKills": { "type": "number" },
+        "username": { "type": "string" },
+        "clanId": { "type": "string" },
+        "avatar": { "type": "string" },
+        "status": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Clan": {
+      "title": "Clan",
+      "description": "A player clan sharing progress",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "members": { "type": "array" },
+        "totalGlory": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "DungeonSession": {
+      "title": "Dungeon Session",
+      "description": "Active real-time co-op dungeon",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["waiting", "active", "completed"] },
+        "hostId": { "type": "string" },
+        "guestId": { "type": "string" },
+        "bossHealth": { "type": "number" },
+        "hostX": { "type": "number" },
+        "hostY": { "type": "number" },
+        "guestX": { "type": "number" },
+        "guestY": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     }
@@ -36,7 +70,27 @@
     },
     "/users/{userId}": {
       "schema": "UserSync",
-      "description": "User specific game progress sync"
+      "description": "User specific game progress and profile"
+    },
+    "/nicknames/{nickname}": {
+      "schema": { "type": "object", "properties": { "uid": { "type": "string" } } },
+      "description": "Index for unique nicknames"
+    },
+    "/clans/{clanId}": {
+      "schema": "Clan",
+      "description": "Clan collection"
+    },
+    "/dungeons/{dungeonId}": {
+      "schema": "DungeonSession",
+      "description": "Active co-op sessions"
+    },
+    "/users/{userId}/friends/{friendId}": {
+      "schema": { "type": "object", "properties": { "addedAt": { "type": "string", "format": "date-time" } } },
+      "description": "User friends list"
+    },
+    "/invites/{inviteId}": {
+      "schema": { "type": "object", "properties": { "fromId": { "type": "string" }, "toId": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" } } },
+      "description": "Social invitations (Clans, Friends, Dungeons)"
     }
   }
 }

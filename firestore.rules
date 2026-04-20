@@ -1,11 +1,11 @@
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Reuseable helpers
+    // --- REUSABLE HELPERS ---
     function isSignedIn() {
       return request.auth != null;
     }
@@ -22,33 +22,85 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Rules for User Sync Collection
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- COLLECTION RULES ---
+
+    // 1. User Sync (Profile & Progress)
+    function isValidUserSync(data) {
+      return data.keys().hasAll(['gold', 'souls', 'crystals', 'glory', 'totalKills', 'updatedAt']) &&
+             data.gold is number && 
+             data.updatedAt == request.time;
+    }
+
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow create, update: if (isOwner(userId) || isAdmin()) && 
-        isValidId(userId) &&
-        request.resource.data.gold is number &&
-        request.resource.data.updatedAt == request.time;
+      allow get: if isSignedIn(); // Allow searching for friends/clan members
+      allow list: if isAdmin() || (isSignedIn() && resource.data.username != null); // Admin can list all, others only public
+      allow create, update: if (isOwner(userId) || isAdmin()) && isValidUserSync(incoming());
+      allow delete: if isAdmin();
+      
+      // Friends subcollection
+      match /friends/{friendId} {
+        allow read: if isOwner(userId) || isOwner(friendId) || isAdmin();
+        allow create, update: if (isOwner(userId) || isAdmin()) && isValidId(friendId) && incoming().addedAt == request.time;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // 2. Leaderboard
+    match /leaderboard/{uid} {
+      allow read: if true;
+      allow create, update: if (isOwner(uid) || isAdmin()) && 
+        incoming().keys().hasAll(['username', 'stage', 'lastUpdated']) &&
+        incoming().lastUpdated == request.time;
       allow delete: if isAdmin();
     }
 
-    // Rules for Leaderboard
-    function isValidLeaderboardEntry(data) {
-      return data.keys().hasAll(['username', 'stage', 'subStage', 'dps', 'glory', 'lastUpdated']) &&
-             data.username is string && data.username.size() >= 1 && data.username.size() <= 64 &&
-             data.stage is number &&
-             data.subStage is number &&
-             data.dps is number &&
-             data.glory is number &&
-             data.lastUpdated == request.time;
+    // 3. Unique Nicknames (Unique Index)
+    match /nicknames/{nickname} {
+      allow read: if true;
+      allow create: if isSignedIn() && !exists(/databases/$(database)/documents/nicknames/$(nickname)) && 
+                     incoming().uid == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
-    match /leaderboard/{uid} {
-      allow read: if true;
-      allow create, update: if (isSignedIn() && (request.auth.uid == uid || (request.resource.data.keys().hasAll(['tgId']) && uid == request.resource.data.tgId)) || isAdmin()) && 
-        isValidId(uid) && 
-        isValidLeaderboardEntry(request.resource.data);
-      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+    // 4. Clans
+    match /clans/{clanId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid && 
+                     incoming().createdAt == request.time;
+      allow update: if isAdmin() || (isOwner(existing().ownerId) && 
+                     incoming().diff(existing()).affectedKeys().hasOnly(['description', 'members', 'totalGlory']));
+      allow delete: if isAdmin();
+    }
+
+    // 5. Co-op Dungeons
+    match /dungeons/{dungeonId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.hostId || request.auth.uid == resource.data.guestId || isAdmin());
+      allow create: if isSignedIn() && incoming().hostId == request.auth.uid && 
+                     incoming().status == 'waiting';
+      allow update: if isSignedIn() && (
+        // Joining as guest
+        (existing().status == 'waiting' && incoming().guestId == request.auth.uid && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['guestId', 'status', 'updatedAt'])) ||
+        // Syncing positions & combat
+        ((request.auth.uid == existing().hostId || request.auth.uid == existing().guestId) && 
+         incoming().updatedAt == request.time)
+      );
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.hostId);
+    }
+
+    // 6. Social Invitations
+    match /invites/{inviteId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.fromId || request.auth.uid == resource.data.toId || isAdmin());
+      allow create: if isSignedIn() && incoming().fromId == request.auth.uid && 
+                     incoming().status == 'pending';
+      allow update: if isSignedIn() && (
+        (request.auth.uid == existing().toId && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() || (isSignedIn() && (request.auth.uid == resource.data.fromId || request.auth.uid == resource.data.toId));
     }
   }
 }
