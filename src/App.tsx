@@ -125,7 +125,7 @@ const HEROES_DATA = [
     { id: 3, name: 'Владыка', ability: 'x2 Общий урон', gloryReq: 100, cost: 500000000, color: 'text-red-500' },
 ];
 
-function getClickDmg(state: GameState, comboMult: number = 1) {
+function getClickDmg(state: GameState, comboMult: number = 1): { dmg: number, isCrit: boolean } {
     let dmg = (15 + state.player.gear.sword * 25) * (1 + state.player.lvl * 0.25);
     dmg *= (1 + state.glory * 0.25);
     
@@ -141,8 +141,10 @@ function getClickDmg(state: GameState, comboMult: number = 1) {
     let critMultiplier = 2 + state.player.gear.armor * 0.1; // Base 200% + 10% per armor level
     if (state.mainHero.id === 1) critMultiplier += 0.2;
     
+    let isCrit = false;
     if (Math.random() < critChance) {
         dmg *= critMultiplier;
+        isCrit = true;
     }
 
     if (state.mainHero.id === 3) dmg *= 2;
@@ -150,8 +152,11 @@ function getClickDmg(state: GameState, comboMult: number = 1) {
     if(state.arts[8]?.owned) dmg *= 3; // Heart of Titan
     if(state.arts[12]?.owned) dmg *= 10; // Sword of Truth
     
-    if (state.buffs.wrathUntil > Date.now()) dmg *= 10;
-    return Math.floor(dmg);
+    if (state.buffs.wrathUntil > Date.now()) {
+        dmg *= 10;
+        isCrit = true; // Wrath hits always show as crits
+    }
+    return { dmg: Math.floor(dmg), isCrit };
 }
 
 function getStaticDps(state: GameState) {
@@ -452,24 +457,35 @@ function MonsterPortrait({ isBoss, kills, name }: { isBoss: boolean, kills: numb
         : NORMAL_MONSTERS[kills % NORMAL_MONSTERS.length];
 
     return (
-        <div className={`relative w-full max-w-[150px] lg:max-w-none lg:w-64 h-[180px] lg:h-[340px] transition-all duration-300 origin-bottom mx-auto flex items-center justify-center`}>
+        <div className={`relative w-full max-w-[150px] lg:max-w-none lg:w-64 h-[180px] lg:h-[340px] origin-bottom mx-auto flex items-center justify-center overflow-visible`}>
             {isBoss && (
                 <div className="absolute inset-0 bg-red-500/20 blur-[50px] rounded-full pointer-events-none animate-pulse"></div>
             )}
             
-            <motion.div
-                animate={{ y: [0, isBoss ? -15 : -8, 0], scale: isBoss ? [1, 1.05, 1] : 1 }}
-                transition={{ duration: isBoss ? 2 : 3, repeat: Infinity, ease: "easeInOut" }}
-                className={`relative z-10 ${isBoss ? 'w-40 h-40 lg:w-64 lg:h-64' : 'w-24 h-24 lg:w-40 lg:h-40'}`}
-            >
-                <img 
-                    src={`https://genshin-impact.fandom.com/wiki/Special:FilePath/${iconName}`}
-                    alt={name}
-                    onError={handleImageError('https://genshin-impact.fandom.com/wiki/Special:FilePath/Enemy_Pyro_Slime_Icon.png')}
-                    className={`w-full h-full object-contain filter drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] ${isBoss ? 'brightness-110 drop-shadow-[0_0_30px_rgba(239,68,68,0.6)]' : ''}`}
-                    referrerPolicy="no-referrer"
-                />
-            </motion.div>
+            <AnimatePresence mode="popLayout">
+                <motion.div
+                    key={iconName + kills}
+                    initial={{ opacity: 0, scale: 0.5, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 1.2, filter: "blur(5px)" }}
+                    transition={{ duration: 0.15 }}
+                    className={`absolute flex items-center justify-center z-10 w-full h-full`}
+                >
+                    <motion.div
+                        animate={{ y: [0, isBoss ? -15 : -8, 0], scale: isBoss ? [1, 1.05, 1] : 1 }}
+                        transition={{ duration: isBoss ? 2 : 3, repeat: Infinity, ease: "easeInOut" }}
+                        className={`relative flex items-center justify-center ${isBoss ? 'w-[120%] h-[120%] lg:w-[150%] lg:h-[150%]' : 'w-[80%] h-[80%] lg:w-[100%] lg:h-[100%]'}`}
+                    >
+                        <img 
+                            src={`https://genshin-impact.fandom.com/wiki/Special:FilePath/${iconName}`}
+                            alt={name}
+                            onError={handleImageError('https://genshin-impact.fandom.com/wiki/Special:FilePath/Enemy_Pyro_Slime_Icon.png')}
+                            className={`w-full h-full object-contain filter drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] ${isBoss ? 'brightness-110 drop-shadow-[0_0_30px_rgba(239,68,68,0.6)]' : ''}`}
+                            referrerPolicy="no-referrer"
+                        />
+                    </motion.div>
+                </motion.div>
+            </AnimatePresence>
         </div>
     );
 }
@@ -546,7 +562,7 @@ export default function App() {
     
     const [activeTab, setActiveTab] = useState('team');
     const [tonConnectUI] = useTonConnectUI();
-    const [damagePopups, setDamagePopups] = useState<{id: number, val: number, x: number, y: number}[]>([]);
+    const [damagePopups, setDamagePopups] = useState<{id: number, val: number, x: number, y: number, isCrit: boolean}[]>([]);
     const [lastActiveDps, setLastActiveDps] = useState(0);
     const [gachaModal, setGachaModal] = useState<{show: boolean, spinning: boolean, prize: any, rotation: number, error?: string | null}>({show: false, spinning: false, prize: null, rotation: 0});
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -824,7 +840,7 @@ export default function App() {
                     next = applyDamage(next, dps / 10, false);
                 }
                 if (next.buffs.frenzyUntil > now || next.buffs.autoClickerUntil > now) {
-                    const dmg = getClickDmg(next);
+                    const { dmg } = getClickDmg(next);
                     next = applyDamage(next, dmg, false);
                     activeDpsBufRef.current += dmg * 10; // approximate for display
                 }
@@ -867,7 +883,8 @@ export default function App() {
                         id, 
                         val: staticDps, 
                         x: rect.left + rect.width / 2 + scatterX, 
-                        y: rect.top + rect.height / 2 + scatterY 
+                        y: rect.top + rect.height / 2 + scatterY,
+                        isCrit: false
                     }]);
                     setTimeout(() => {
                         setDamagePopups(pop => pop.filter(p => p.id !== id));
@@ -908,7 +925,7 @@ export default function App() {
         
         let comboMult = 1 + (Math.floor(comboRef.current / 10) * 0.1); // Max +1.0 (2x damage at 100 combo)
         
-        const dmg = getClickDmg(gameState, comboMult);
+        const { dmg, isCrit } = getClickDmg(gameState, comboMult);
         activeDpsBufRef.current += dmg;
         
         if (e) {
@@ -920,7 +937,8 @@ export default function App() {
                 id, 
                 val: dmg, 
                 x: rect.left + rect.width / 2 + scatterX, 
-                y: rect.top + rect.height / 2 + scatterY 
+                y: rect.top + rect.height / 2 + scatterY,
+                isCrit
             }]);
             setTimeout(() => {
                 setDamagePopups(prev => prev.filter(p => p.id !== id));
@@ -1031,7 +1049,8 @@ export default function App() {
                 newSkills[id] = { ...s, last: Date.now() };
                 let next = { ...prev, skills: newSkills };
                 if (id === 0) {
-                    next = applyDamage(next, getClickDmg(next) * 50, false);
+                    const { dmg } = getClickDmg(next);
+                    next = applyDamage(next, dmg * 50, false);
                 } else if (id === 1) {
                     next.buffs = { ...next.buffs, frenzyUntil: Date.now() + 5000 };
                 } else if (id === 2) {
@@ -1286,8 +1305,8 @@ export default function App() {
                             <div className="absolute -left-4 -top-4 w-20 h-20 bg-gradient-to-br from-red-500/20 to-transparent rounded-full blur-xl"></div>
                             <div className="text-red-500 font-extrabold text-xs uppercase tracking-widest z-10">Hero Level</div>
                             <div className="text-4xl font-black text-zinc-200 my-1 drop-shadow-sm z-10">{gameState.player.lvl}{gameState.player.lvl >= 100 ? ' (MAX)' : ''}</div>
-                            <div className="text-xs text-red-400 font-bold mb-2 uppercase z-10">Click DMG: {format(getClickDmg(gameState))}</div>
-                            <button 
+                            <div className="text-xs text-red-400 font-bold mb-2 uppercase z-10">Click DMG: {format(getClickDmg(gameState).dmg)}</div>
+                            <button  
                                 onClick={upLvl}
                                 disabled={gameState.gold < hCost || gameState.player.lvl >= 100}
                                 className={`aaa-btn w-full py-2.5 px-4 rounded-xl font-bold text-sm uppercase z-10 ${
@@ -1781,20 +1800,21 @@ export default function App() {
                     {damagePopups.map(popup => (
                         <motion.div
                             key={popup.id}
-                            initial={{ opacity: 1, y: popup.y, x: popup.x, scale: 0.5 }}
-                            animate={{ opacity: 0, y: popup.y - 120, scale: 1.5 }}
+                            initial={{ opacity: 1, y: popup.y, x: popup.x, scale: popup.isCrit ? 0.8 : 0.5 }}
+                            animate={{ opacity: 0, y: popup.y - 120, scale: popup.isCrit ? 1.8 : 1.2 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.6, ease: "easeOut" }}
-                            className="fixed pointer-events-none text-4xl font-black text-red-500 z-50"
+                            className={`fixed pointer-events-none font-black z-50 ${popup.isCrit ? 'text-yellow-400 text-5xl' : 'text-red-500 text-4xl'}`}
                             style={{ 
                                 left: 0,
                                 top: 0,
                                 marginLeft: '-2rem',
-                                WebkitTextStroke: '2px #450a0a',
-                                textShadow: '0 4px 8px rgba(220,38,38,0.8)'
+                                WebkitTextStroke: popup.isCrit ? '2px #b45309' : '2px #450a0a',
+                                textShadow: popup.isCrit ? '0 4px 15px rgba(234,179,8,1)' : '0 4px 8px rgba(220,38,38,0.8)'
                             }}
                         >
-                            {format(popup.val)}
+                            {popup.isCrit && <span className="absolute -top-6 -left-4 text-sm text-yellow-200" style={{WebkitTextStroke: 0}}>CRITICAL!</span>}
+                            {popup.isCrit ? '💥 ' : ''}{format(popup.val)}
                         </motion.div>
                     ))}
                 </AnimatePresence>
