@@ -642,7 +642,8 @@ export default function App() {
                     updateTheme();
                 } catch(e) {}
 
-                // Load from CloudStorage if supported (v6.9+)
+                // Load from CloudStorage if supported (v6.9+) - Disabled due to DATA_TOO_LONG errors
+                /*
                 if (tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
                     try {
                         tg.CloudStorage.getItem('animeSoul_save', (err: any, value: string) => {
@@ -657,6 +658,7 @@ export default function App() {
                         });
                     } catch(e) {}
                 }
+                */
             }
         } catch (e) {
             console.error("TG Init suppressed error", e);
