@@ -621,6 +621,8 @@ export default function App() {
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const [isCleaning, setIsCleaning] = useState(false);
+    const [lastAutoAudit, setLastAutoAudit] = useState(0);
+    const [newName, setNewName] = useState('');
     const isAdmin = currentUser?.email === 'nevmovenko2004@gmail.com';
 
     const fetchAllUsers = async () => {
@@ -717,71 +719,86 @@ export default function App() {
         }
     };
 
-    const globalLeaderboardCleanup = async () => {
+    const globalLeaderboardCleanup = async (isAuto = false) => {
         if (!isAdmin || isCleaning) return;
         
         setIsCleaning(true);
         const tg = (window as any).Telegram?.WebApp;
         
         try {
-            console.log("Admin Global Cleanup starting...");
-            // Force re-enable network for admin if it was disabled by quota, to attempt cleanup
-            const { enableNetwork } = await import('firebase/firestore');
+            console.log(`[AdminProtocol] Audit mode: ${isAuto ? 'AUTO' : 'USER'}`);
+            const { enableNetwork, writeBatch } = await import('firebase/firestore');
             await enableNetwork(db).catch(() => {});
 
-            const snapshot = await getDocs(collection(db, 'leaderboard'));
-            const uniqueUsers = new Map();
-            const toDelete: string[] = [];
+            const lRef = collection(db, 'leaderboard');
+            const q = isAuto ? query(lRef, limit(300), orderBy('updatedAt', 'desc')) : lRef;
+            
+            const snapshot = await getDocs(q);
+            const registry = new Map();
+            const targets: any[] = []; 
 
             snapshot.docs.forEach(docSnap => {
-                const data = docSnap.data();
-                const id = docSnap.id;
+                const d = docSnap.data();
+                const ref = docSnap.ref;
+                const key = d.tgId ? `tg_${d.tgId}` : (d.googleUid || d.uid || (d.username || '').toLowerCase().trim());
                 
-                // Identify the human behind the entry
-                const key = data.tgId ? `tg_${data.tgId}` : (data.googleUid || data.uid || (data.username || '').toLowerCase().trim());
-                
-                // Logic check: "Impossible" or "Broken" values
-                // Current max stage is likely way below 1000 for honest players
-                const isImpossible = data.stage > 1200 || data.powerScore > 1e18; 
-                const name = (data.username || '').toLowerCase();
-                const isTest = name.includes('test') || name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
+                const isSus = d.stage > 1200 || d.powerScore > 1e18; 
+                const nameStr = (d.username || '').toLowerCase();
+                const isMock = nameStr.includes('test') || nameStr.includes('gemini') || nameStr.includes('ais agent');
 
-                if (isImpossible || isTest || !key) {
-                    toDelete.push(id);
+                if (isSus || isMock || !key) {
+                    targets.push(ref);
                     return;
                 }
 
-                if (!uniqueUsers.has(key)) {
-                    uniqueUsers.set(key, { id, powerScore: data.powerScore || 0 });
+                if (!registry.has(key)) {
+                    registry.set(key, { ref, score: d.powerScore || 0 });
                 } else {
-                    const existing = uniqueUsers.get(key);
-                    if ((data.powerScore || 0) > existing.powerScore) {
-                        toDelete.push(existing.id);
-                        uniqueUsers.set(key, { id, powerScore: data.powerScore || 0 });
+                    const existingRecord = registry.get(key);
+                    if ((d.powerScore || 0) > existingRecord.score) {
+                        targets.push(existingRecord.ref);
+                        registry.set(key, { ref, score: d.powerScore || 0 });
                     } else {
-                        toDelete.push(id);
+                        targets.push(ref);
                     }
                 }
             });
 
-            console.log(`Global Cleanup: Identified ${toDelete.length} entries for removal.`);
-            
-            for (let i = 0; i < toDelete.length; i++) {
-                // Delete in small batches if needed, but here we just go through them
-                await deleteDoc(doc(db, 'leaderboard', toDelete[i])).catch(err => {
-                    console.error(`Failed to delete ${toDelete[i]}`, err);
-                });
+            if (targets.length > 0) {
+                const bSize = 400;
+                for (let i = 0; i < targets.length; i += bSize) {
+                    const batch = writeBatch(db);
+                    targets.slice(i, i + bSize).forEach(r => batch.delete(r));
+                    await batch.commit();
+                }
             }
             
-            tg?.showAlert?.(`Глобальная очистка завершена! Удалено ${toDelete.length} дубликатов/мусора.`);
+            if (!isAuto) {
+                tg?.showAlert?.(`Audit Complete: Purged ${targets.length} entries.`);
+            } else {
+                setLastAutoAudit(Date.now());
+            }
         } catch (err) {
-            console.error("Global cleanup failed", err);
-            tg?.showAlert?.("Ошибка при глобальной очистке.");
+            console.error("Audit fail:", err);
+            if (!isAuto) tg?.showAlert?.("Sync Error: DB_PARITY_FAIL");
         } finally {
             setIsCleaning(false);
         }
     };
-    const [newName, setNewName] = useState('');
+    // --- Auto-Cleanup Effect for Admin ---
+    useEffect(() => {
+        if (!isAdmin || isCleaning) return;
+        
+        // Auto-audit every 5 minutes if admin is active
+        const interval = setInterval(() => {
+            const now = Date.now();
+            if (now - lastAutoAudit > 300000) {
+                globalLeaderboardCleanup(true);
+            }
+        }, 60000);
+
+        return () => clearInterval(interval);
+    }, [isAdmin, isCleaning, lastAutoAudit]);
     const [flyingChest, setFlyingChest] = useState<{x: number, y: number, show: boolean, type: 'gold' | 'gems' | 'souls'}>({x: 0, y: 0, show: false, type: 'gold'});
     
     const playerNameRef = useRef(playerName);
@@ -2335,7 +2352,7 @@ export default function App() {
                                                         <button onClick={() => adminCommands.resetCooldowns()} className="py-3 bg-zinc-900 border border-zinc-800 rounded-2xl font-black text-[9px] uppercase text-zinc-300 hover:text-white transition-colors">Reset CDs</button>
                                                     </div>
                                                     <button 
-                                                        onClick={globalLeaderboardCleanup}
+                                                        onClick={() => globalLeaderboardCleanup(false)}
                                                         disabled={isCleaning}
                                                         className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase transition-all shadow-xl tracking-widest ${
                                                             isCleaning 
@@ -2345,6 +2362,11 @@ export default function App() {
                                                     >
                                                         {isCleaning ? 'AUDITING CLUSTERS...' : 'EXECUTE GLOBAL AUDIT'}
                                                     </button>
+                                                    {lastAutoAudit > 0 && (
+                                                        <div className="text-[7px] text-zinc-600 font-bold text-center mt-2 uppercase tracking-[0.3em] opacity-40 italic">
+                                                            Background sync active — Last: {new Date(lastAutoAudit).toLocaleTimeString()}
+                                                        </div>
+                                                    )}
                                                     <div className="text-[7px] text-zinc-600 font-bold text-center mt-1 uppercase tracking-widest italic opacity-50">Authorized maintainer access only</div>
                                                 </div>
                                             )}
