@@ -665,14 +665,15 @@ export default function App() {
     // --- Identity Helper ---
     const getIdentityId = () => {
         if (!auth.currentUser) return null;
-        // Priority 1: Auth provider (Google/Email) - most stable
+        // The Identity ID is the primary key for the cloud save document.
+        // We prioritize Google UID if they are logged in.
         if (!auth.currentUser.isAnonymous) return auth.currentUser.uid;
         
-        // Priority 2: Telegram User ID - stable within the Telegram platform
+        // Inside Telegram, the User ID is a perfect stable anchor.
         const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
         if (tgUser && tgUser.id) return `tg_${tgUser.id}`;
         
-        // Priority 3: Device-bound Anonymous UID
+        // If all else fails, use the Firebase device-bound UID.
         return auth.currentUser.uid;
     };
 
@@ -704,6 +705,8 @@ export default function App() {
 
                 const leaderboardEntry = {
                     uid: identityId,
+                    tgId: (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || null,
+                    googleUid: auth.currentUser!.isAnonymous ? null : auth.currentUser!.uid,
                     username: playerNameRef.current,
                     stage,
                     subStage: gameStateRef.current.subStage,
@@ -875,113 +878,112 @@ export default function App() {
         };
         calculateOfflineProgress();
 
-        // --- Firebase Auth & Leaderboard ---
-        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-            if (!isAuthReady) setIsAuthReady(true);
+    // --- Firebase Auth & Leaderboard ---
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+        if (!isAuthReady) setIsAuthReady(true);
+        
+        if (user) {
+            setAuthError(null);
             
-            if (user) {
-                setAuthError(null);
-                setPlayerName(prev => {
-                    if (prev === 'Аноним') return generateGuestName(user.uid);
-                    return prev;
-                });
+            const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+            const platformId = tgUser?.id ? `tg_${tgUser.id}` : null;
+            const googleUid = !user.isAnonymous ? user.uid : null;
+            const identityId = googleUid || platformId || user.uid;
 
-                // --- Load from Cloud ---
-                const identityId = user.isAnonymous 
-                    ? (((window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id) 
-                        ? `tg_${(window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id}` 
-                        : user.uid)
-                    : user.uid;
-
-                try {
-                    const { getDoc } = await import('firebase/firestore');
-                    const userDoc = await getDoc(doc(db, 'users', identityId));
-                    if (userDoc.exists()) {
-                        const cloudData = userDoc.data();
-                        if (cloudData.gold !== undefined) {
-                            setGameState(prev => ({
-                                ...prev,
-                                ...cloudData,
-                                updatedAt: undefined 
-                            }));
-                        }
-                    }
-                } catch (err) {
-                    console.error("Cloud load error:", err);
-                }
-            } else {
-                // No user at all (first time or logged out) - only then sign in anonymously
-                try {
-                    await signInAnonymously(auth);
-                } catch (err: any) {
-                    console.error("Auto-anon signin failed", err);
-                }
-            }
-        });
-
-        const q = query(collection(db, 'leaderboard'), orderBy('powerScore', 'desc'), limit(100));
-        const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
-            const rawData = snapshot.docs
-                .map(doc => ({ ...doc.data(), id: doc.id }))
-                .filter((u: any) => {
-                    const name = (u.username || '').toLowerCase();
-                    const isAI = name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
-                    const isTestAnon = name === 'аноним' && u.stage > 50; 
-                    return !isAI && !isTestAnon;
-                });
-            
-            const bestPerName = new Map();
-            rawData.forEach((entry: any) => {
-                const name = (entry.username || '').toLowerCase().trim();
-                // Since they are ordered by power score descending by the query, the first one encountered is usually the best, 
-                // but let's be safe.
-                if (!bestPerName.has(name) || bestPerName.get(name).powerScore < entry.powerScore) {
-                    bestPerName.set(name, entry);
-                }
+            setPlayerName(prev => {
+                if (prev === 'Аноним') return generateGuestName(platformId || user.uid);
+                return prev;
             });
-            
-            const fullyProcessedData = Array.from(bestPerName.values())
-                             .sort((a: any, b: any) => b.powerScore - a.powerScore);
-                             
-            setLeaderboard(fullyProcessedData.slice(0, 15));
-            setIsLoadingLeaderboard(false);
-            
-            if (auth.currentUser) {
-                const tgInitData = (window as any).Telegram?.WebApp?.initDataUnsafe;
-                const telegramUserId = tgInitData?.user?.id?.toString();
+
+            // --- Robust Multi-Account Loading & Linking ---
+            try {
+                const { getDoc, setDoc } = await import('firebase/firestore');
                 
-                // Cleanup duplicate accounts for the current logged-in user
-                const currName = playerNameRef.current.toLowerCase().trim();
-                if (currName && currName !== 'аноним') {
-                    const myEntries = rawData.filter((u: any) => (u.username || '').toLowerCase().trim() === currName);
-                    if (myEntries.length > 1) {
-                        // Ensure it's sorted by powerScore desc
-                        myEntries.sort((a: any, b: any) => b.powerScore - a.powerScore);
-                        // Delete all except the best one
-                        for (let i = 1; i < myEntries.length; i++) {
-                            if (!isQuotaExceededRef.current && !isQuotaExceededGlobal) {
-                                deleteDoc(doc(db, 'leaderboard', myEntries[i].id))
-                                    .catch(err => handleFirestoreError(err, 'DELETE', 'leaderboard/' + myEntries[i].id));
-                            }
-                        }
+                // 1. Try to load from Google identity if available
+                let cloudDoc = null;
+                if (googleUid) cloudDoc = await getDoc(doc(db, 'users', googleUid));
+                
+                // 2. Try to load from Telegram identity if available
+                let tgDoc = null;
+                if (platformId && platformId !== googleUid) tgDoc = await getDoc(doc(db, 'users', platformId));
+
+                const cloudData = cloudDoc?.exists() ? cloudDoc.data() : null;
+                const tgData = tgDoc?.exists() ? tgDoc.data() : null;
+
+                // Determine which save is better (higher glory or more kills)
+                const getPower = (d: any) => d ? (d.glory * 1000000 + d.totalKills) : -1;
+                const mainData = getPower(cloudData) >= getPower(tgData) ? cloudData : tgData;
+
+                if (mainData && mainData.gold !== undefined) {
+                    setGameState(prev => ({
+                        ...prev,
+                        ...mainData,
+                        tgId: tgUser?.id || mainData.tgId || null,
+                        googleUid: googleUid || mainData.googleUid || null,
+                        updatedAt: undefined 
+                    }));
+
+                    // LINKING: If we are on Google and have better data from TG, or vice versa, sync them.
+                    if (googleUid && mainData === tgData && !isQuotaExceededRef.current && !isQuotaExceededGlobal) {
+                        console.log("Linking Telegram progress to Google account...");
+                        await setDoc(doc(db, 'users', googleUid), { ...mainData, googleUid, tgId: tgUser?.id || null }, { merge: true });
                     }
                 }
-
-                // Calculate rank based on deduplicated list
-                const identityId = getIdentityId();
-                let myRank = fullyProcessedData.findIndex((d: any) => d.id === identityId);
-                if (myRank === -1) {
-                    // Try to match by name if ID changed due to auth state transition
-                    myRank = fullyProcessedData.findIndex((d: any) => (d.username || '').toLowerCase().trim() === currName);
-                }
-                
-                if (myRank !== -1) setUserRank(myRank + 1);
-                else setUserRank(null);
+            } catch (err) {
+                console.error("Cloud load error:", err);
             }
-        }, (err) => {
-            setIsLoadingLeaderboard(false);
-            handleFirestoreError(err, 'LIST', 'leaderboard');
+        } else {
+            try {
+                await signInAnonymously(auth);
+            } catch (err: any) {
+                console.error("Auto-anon signin failed", err);
+            }
+        }
+    });
+
+    const q = query(collection(db, 'leaderboard'), orderBy('powerScore', 'desc'), limit(100));
+    const unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
+        const rawData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        
+        // Unified Ranking: Group by human identity (TG ID or Google UID)
+        const uniqueUsers = new Map();
+
+        rawData.forEach((entry: any) => {
+            const name = (entry.username || 'Аноним').toLowerCase();
+            const isAI = name.includes('gemini') || name.includes('ais agent') || name.includes('ais_agent');
+            if (isAI) return;
+
+            // Decision: What is the most stable unique key for this entry?
+            // Prioritize TG ID, then Auth UID.
+            const uniqueKey = entry.tgId ? `tg_${entry.tgId}` : entry.uid;
+
+            if (!uniqueUsers.has(uniqueKey) || uniqueUsers.get(uniqueKey).powerScore < entry.powerScore) {
+                uniqueUsers.set(uniqueKey, entry);
+            }
         });
+
+        const sortedList = Array.from(uniqueUsers.values())
+            .sort((a, b) => b.powerScore - a.powerScore);
+
+        setLeaderboard(sortedList.slice(0, 15));
+        setIsLoadingLeaderboard(false);
+        
+        if (auth.currentUser) {
+            const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+            const currentIdentity = auth.currentUser.isAnonymous && tgUser?.id ? `tg_${tgUser.id}` : auth.currentUser.uid;
+            
+            let myRank = sortedList.findIndex((d: any) => 
+                (d.uid === auth.currentUser?.uid) || 
+                (tgUser?.id && d.tgId == tgUser.id)
+            );
+            
+            if (myRank !== -1) setUserRank(myRank + 1);
+            else setUserRank(null);
+        }
+    }, (err) => {
+        setIsLoadingLeaderboard(false);
+        handleFirestoreError(err, 'LIST', 'leaderboard');
+    });
 
         return () => {
             window.removeEventListener('contextmenu', handleContextMenu);
