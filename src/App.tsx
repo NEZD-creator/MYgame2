@@ -662,17 +662,31 @@ export default function App() {
     // Track stage key for optimized saving
     const useRefStageKey = useRef('');
 
+    // --- Identity Helper ---
+    const getIdentityId = () => {
+        if (!auth.currentUser) return null;
+        // Priority 1: Auth provider (Google/Email) - most stable
+        if (!auth.currentUser.isAnonymous) return auth.currentUser.uid;
+        
+        // Priority 2: Telegram User ID - stable within the Telegram platform
+        const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+        if (tgUser && tgUser.id) return `tg_${tgUser.id}`;
+        
+        // Priority 3: Device-bound Anonymous UID
+        return auth.currentUser.uid;
+    };
+
     // Consolidated Cloud Sync (Throttled & Debounced)
     useEffect(() => {
         // Skip if not logged in or quota is out
-        if (!isAuthReady || !auth.currentUser || auth.currentUser.isAnonymous || isQuotaExceededRef.current || isQuotaExceededGlobal) return;
+        const identityId = getIdentityId();
+        if (!isAuthReady || !auth.currentUser || !identityId || isQuotaExceededRef.current || isQuotaExceededGlobal) return;
 
         const performCloudSync = async () => {
             const now = Date.now();
             const stage = Math.floor(gameStateRef.current.totalKills / 5) + 1;
             
-            // Strictly enforce cooldowns: 
-            // 3 minutes for general save, or 1 minute if significant progress (stage change)
+            // Strictly enforce cooldowns
             const stageChanged = stage >= lastSyncedStageRef.current + 1;
             const cooldown = stageChanged ? 60000 : 180000;
 
@@ -681,16 +695,15 @@ export default function App() {
             try {
                 if (isQuotaExceededRef.current || isQuotaExceededGlobal) return;
 
-                console.log("Cloud Sync: Synchronizing state to Firestore...");
+                console.log(`Cloud Sync: Saving to identity [${identityId}]...`);
                 
-                const uid = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || auth.currentUser!.uid;
-                const userRef = doc(db, 'users', auth.currentUser!.uid);
-                const leaderboardRef = doc(db, 'leaderboard', uid);
+                const userRef = doc(db, 'users', identityId);
+                const leaderboardRef = doc(db, 'leaderboard', identityId);
 
                 const powerScore = (gameStateRef.current.glory * 1000000) + gameStateRef.current.totalKills;
 
                 const leaderboardEntry = {
-                    uid,
+                    uid: identityId,
                     username: playerNameRef.current,
                     stage,
                     subStage: gameStateRef.current.subStage,
@@ -708,6 +721,15 @@ export default function App() {
                 cloudSyncCooldownRef.current = now;
                 lastSyncedStageRef.current = stage;
                 lastSyncTimeRef.current = now;
+
+                // Cleanup: If this is a Google account, we might have an old Telegram-only leaderboard entry
+                const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+                if (!auth.currentUser!.isAnonymous && tgUser && tgUser.id) {
+                    const oldTgId = `tg_${tgUser.id}`;
+                    if (oldTgId !== identityId) {
+                        deleteDoc(doc(db, 'leaderboard', oldTgId)).catch(() => {});
+                    }
+                }
             } catch (err) {
                 handleFirestoreError(err, 'WRITE', 'cloud-sync');
             }
@@ -865,9 +887,15 @@ export default function App() {
                 });
 
                 // --- Load from Cloud ---
+                const identityId = user.isAnonymous 
+                    ? (((window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id) 
+                        ? `tg_${(window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id}` 
+                        : user.uid)
+                    : user.uid;
+
                 try {
                     const { getDoc } = await import('firebase/firestore');
-                    const userDoc = await getDoc(doc(db, 'users', user.uid));
+                    const userDoc = await getDoc(doc(db, 'users', identityId));
                     if (userDoc.exists()) {
                         const cloudData = userDoc.data();
                         if (cloudData.gold !== undefined) {
@@ -940,10 +968,10 @@ export default function App() {
                 }
 
                 // Calculate rank based on deduplicated list
-                const currentUid = telegramUserId || auth.currentUser.uid;
-                let myRank = fullyProcessedData.findIndex((d: any) => d.id === currentUid);
+                const identityId = getIdentityId();
+                let myRank = fullyProcessedData.findIndex((d: any) => d.id === identityId);
                 if (myRank === -1) {
-                    // Try to match by name if UID changed due to anon logout
+                    // Try to match by name if ID changed due to auth state transition
                     myRank = fullyProcessedData.findIndex((d: any) => (d.username || '').toLowerCase().trim() === currName);
                 }
                 
